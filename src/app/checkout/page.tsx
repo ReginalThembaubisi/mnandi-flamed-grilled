@@ -92,7 +92,7 @@ export default function CheckoutPage() {
     // Save to Supabase (shared)
     ;(async () => {
       try {
-        await supabase.from('orders').insert({
+        const { error } = await supabase.from('orders').insert({
           order_id: orderSummary.orderId,
           confirmation_number: orderSummary.confirmationNumber,
           customer: orderSummary.customer,
@@ -103,6 +103,10 @@ export default function CheckoutPage() {
           delivery_address: orderSummary.customer.deliveryAddress || null,
           instructions: orderSummary.customer.instructions || null
         })
+        if (error) {
+          console.error('Supabase insert error:', error.message)
+          throw error
+        }
       } catch (e) {
         // Fallback to local storage if remote insert fails
         const existing = JSON.parse(localStorage.getItem('orders') || '[]')

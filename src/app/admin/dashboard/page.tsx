@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -64,6 +65,14 @@ export default function AdminDashboard() {
     loadData()
     loadBusinessStatus()
 
+    // Realtime updates from Supabase
+    const channel = supabase
+      .channel('orders-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        loadData()
+      })
+      .subscribe()
+
     // Initialize order tracking
     const storedOrders = localStorage.getItem('orders')
     if (storedOrders) {
@@ -77,7 +86,10 @@ export default function AdminDashboard() {
       checkForNewOrders()
     }, 5000) // Check every 5 seconds
 
-    return () => clearInterval(orderInterval)
+    return () => {
+      clearInterval(orderInterval)
+      supabase.removeChannel(channel)
+    }
   }, [router])
 
   // Real-time order monitoring
@@ -134,6 +146,15 @@ export default function AdminDashboard() {
     )
     setOrders(updatedOrders)
     localStorage.setItem('orders', JSON.stringify(updatedOrders))
+
+    // Persist to Supabase
+    ;(async () => {
+      try {
+        await supabase.from('orders').update({ status: newStatus }).eq('order_id', orderId)
+      } catch (e) {
+        // no-op; local state already updated
+      }
+    })()
     
     // Clear notification if this order was being shown and is now completed/cancelled
     if ((newStatus === 'completed' || newStatus === 'cancelled') && 
@@ -205,23 +226,45 @@ ${deliveryInfo}
 
   const loadData = () => {
     try {
-      const savedOrders = JSON.parse(localStorage.getItem('orders') || '[]')
-      const ordersWithStatus: Order[] = savedOrders.map((order: Order) => ({
-        ...order,
-        status: order.status || 'pending'
-      }))
-      setOrders(ordersWithStatus)
+      // Fetch from Supabase first
+      ;(async () => {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .order('timestamp', { ascending: false })
+        if (!error && data) {
+          const mapped: Order[] = data.map((r: any) => ({
+            customer: r.customer,
+            items: r.items,
+            total: Number(r.total) || 0,
+            timestamp: r.timestamp,
+            orderId: r.order_id,
+            status: r.status || 'pending'
+          }))
+          setOrders(mapped)
+          calculateDailySales(mapped)
+          const active = mapped.filter(o => o.status !== 'completed' && o.status !== 'cancelled')
+          setLiveOrderCount(active.length)
+          setLoading(false)
+          return
+        }
+        // Fallback to localStorage
+        const savedOrders = JSON.parse(localStorage.getItem('orders') || '[]')
+        const ordersWithStatus: Order[] = savedOrders.map((order: Order) => ({
+          ...order,
+          status: order.status || 'pending'
+        }))
+        setOrders(ordersWithStatus)
+        calculateDailySales(ordersWithStatus)
+        const activeOrders = ordersWithStatus.filter(order => order.status !== 'completed' && order.status !== 'cancelled')
+        setLiveOrderCount(activeOrders.length)
+        setLoading(false)
+      })()
       
-      // Calculate daily sales
-      calculateDailySales(ordersWithStatus)
-      
-      // Update live order count (only active orders)
-      const activeOrders = ordersWithStatus.filter(order => order.status !== 'completed' && order.status !== 'cancelled')
-      setLiveOrderCount(activeOrders.length)
     } catch (err) {
       console.error('Error loading data:', err)
     } finally {
-      setLoading(false)
+      // setLoading handled above
     }
   }
 
