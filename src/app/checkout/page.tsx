@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { supabase } from '../../lib/supabaseClient'
+import { getSupabase } from '../../lib/supabaseClient'
 
 interface CartItem {
   id: string
@@ -92,6 +92,7 @@ export default function CheckoutPage() {
     // Save to Supabase (shared)
     ;(async () => {
       try {
+        const supabase = getSupabase()
         const { error } = await supabase.from('orders').insert({
           order_id: orderSummary.orderId,
           confirmation_number: orderSummary.confirmationNumber,

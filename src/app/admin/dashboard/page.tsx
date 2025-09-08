@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '../../../lib/supabaseClient'
+import { getSupabase } from '../../../lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -66,6 +66,7 @@ export default function AdminDashboard() {
     loadBusinessStatus()
 
     // Realtime updates from Supabase
+    const supabase = getSupabase()
     const channel = supabase
       .channel('orders-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
@@ -88,7 +89,7 @@ export default function AdminDashboard() {
 
     return () => {
       clearInterval(orderInterval)
-      supabase.removeChannel(channel)
+      getSupabase().removeChannel(channel)
     }
   }, [router])
 
@@ -150,6 +151,7 @@ export default function AdminDashboard() {
     // Persist to Supabase
     ;(async () => {
       try {
+        const supabase = getSupabase()
         await supabase.from('orders').update({ status: newStatus }).eq('order_id', orderId)
       } catch (e) {
         // no-op; local state already updated
@@ -228,6 +230,7 @@ ${deliveryInfo}
     try {
       // Fetch from Supabase first
       ;(async () => {
+        const supabase = getSupabase()
         const { data, error } = await supabase
           .from('orders')
           .select('*')
