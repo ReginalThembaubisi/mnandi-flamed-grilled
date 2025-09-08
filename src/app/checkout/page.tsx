@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { supabase } from '../../lib/supabaseClient'
 
 interface CartItem {
   id: string
@@ -88,10 +89,27 @@ export default function CheckoutPage() {
       status: 'pending'
     }
     
-    // Save order to localStorage (in real app, this would go to a database)
-    const existingOrders = JSON.parse(localStorage.getItem('orders') || '[]')
-    existingOrders.push(orderSummary)
-    localStorage.setItem('orders', JSON.stringify(existingOrders))
+    // Save to Supabase (shared)
+    ;(async () => {
+      try {
+        await supabase.from('orders').insert({
+          order_id: orderSummary.orderId,
+          confirmation_number: orderSummary.confirmationNumber,
+          customer: orderSummary.customer,
+          items: orderSummary.items,
+          total: orderSummary.total,
+          status: orderSummary.status,
+          delivery_type: orderSummary.customer.deliveryType,
+          delivery_address: orderSummary.customer.deliveryAddress || null,
+          instructions: orderSummary.customer.instructions || null
+        })
+      } catch (e) {
+        // Fallback to local storage if remote insert fails
+        const existing = JSON.parse(localStorage.getItem('orders') || '[]')
+        existing.push(orderSummary)
+        localStorage.setItem('orders', JSON.stringify(existing))
+      }
+    })()
     
     // Clear cart
     localStorage.removeItem('cart')
