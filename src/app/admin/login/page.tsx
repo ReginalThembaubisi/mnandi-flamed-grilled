@@ -42,7 +42,7 @@ export default function AdminLogin() {
             <div className="text-4xl mb-4">👨‍🍳</div>
             <h1 className="text-3xl font-bold text-gray-800">Admin Login</h1>
             <p className="text-gray-600 mt-2">Mnandi Flame-Grilled Management</p>
-            <p className="text-xs text-gray-400 mt-1">Developed by Themba Ubisi</p>
+            {/* Developer credit removed for privacy */}
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">

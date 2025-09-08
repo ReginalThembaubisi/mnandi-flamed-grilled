@@ -11,9 +11,7 @@ export default function Home() {
           <p className="text-xl text-gray-600 mb-8">
             Delicious food, easy ordering, no WhatsApp hassle!
           </p>
-          <p className="text-sm text-gray-400 mb-4">
-            Developed by Themba Ubisi (F09-7, Inyatsi)
-          </p>
+          {/* Developer credit removed for privacy */}
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
