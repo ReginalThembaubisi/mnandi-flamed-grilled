@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useAdminAuth } from '../../hooks/useAdminAuth'
+import { clearAdminSession } from '../../lib/adminAuth'
+import { AdminLayout } from '../../components/admin/AdminLayout'
+import { safeJsonParse, safeJsonStringify, sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone } from '../../lib/security'
 
 interface CartItem {
   id: string
@@ -38,17 +42,19 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'new' | 'ready' | 'completed'>('new')
   const router = useRouter()
+  const { isAuthenticated, isChecking } = useAdminAuth()
 
   useEffect(() => {
-    // Check if admin is logged in
-    const isLoggedIn = localStorage.getItem('adminLoggedIn')
-    if (!isLoggedIn) {
-      router.push('/admin/login')
+    if (!isChecking && !isAuthenticated) {
+      return
+    }
+
+    if (!isAuthenticated) {
       return
     }
 
     try {
-      const savedOrders = JSON.parse(localStorage.getItem('orders') || '[]')
+      const savedOrders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
       // Add default status to orders that don't have one
       const ordersWithStatus = savedOrders.map((order: Order) => ({
         ...order,
@@ -60,14 +66,14 @@ export default function OrdersPage() {
     } finally {
       setLoading(false)
     }
-  }, [router])
+  }, [router, isAuthenticated, isChecking])
 
   const updateOrderStatus = (orderId: string, newStatus: Order['status']) => {
     const updatedOrders = orders.map(order => 
       order.orderId === orderId ? { ...order, status: newStatus } : order
     )
     setOrders(updatedOrders)
-    localStorage.setItem('orders', JSON.stringify(updatedOrders))
+    localStorage.setItem('orders', safeJsonStringify(updatedOrders))
   }
 
   const cancelOrder = (orderId: string) => {
@@ -77,44 +83,65 @@ export default function OrdersPage() {
   }
 
   const sendWhatsAppNotification = (order: Order) => {
-    // Format phone number (remove spaces, add country code if needed)
-    let phoneNumber = order.customer.phoneNumber.replace(/\s/g, '')
-    
-    // Add South African country code if not present
-    if (!phoneNumber.startsWith('27')) {
+    try {
+      // Validate and sanitize phone number
+      const phoneValidation = validateAndSanitizePhone(order.customer.phoneNumber)
+      if (!phoneValidation.valid) {
+        alert(`Invalid phone number: ${phoneValidation.error}`)
+        return
+      }
+      
+      let phoneNumber = phoneValidation.sanitized
+      
+      // Add South African country code if not present
       if (phoneNumber.startsWith('0')) {
         phoneNumber = '27' + phoneNumber.substring(1)
-      } else {
+      } else if (!phoneNumber.startsWith('27')) {
         phoneNumber = '27' + phoneNumber
       }
-    }
 
-    // Create WhatsApp message
-    const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*
+      // Final security check
+      const sanitizedPhone = sanitizePhoneForWhatsApp(phoneNumber)
 
-Order #${order.orderId.slice(-6)}
+      // Create WhatsApp message with sanitized content
+      const deliveryInfo = order.customer.deliveryType === 'delivery'
+        ? `🚚 *Delivery Details:*
+• Address: ${sanitizeText(order.customer.deliveryAddress || '')}
+• Customer: ${sanitizeText(order.customer.name)}
+
+✅ Your order is ready for delivery! We'll be coming to deliver it soon.`
+        : `📍 *Pickup Details:*
+• Room: ${sanitizeText(order.customer.roomNumber)}
+• Customer: ${sanitizeText(order.customer.name)}
+
+✅ Your order is ready for pickup! Please come and collect it.`
+
+      const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*
+
+Order #${sanitizeText(order.orderId.slice(-6))}
 
 📋 *Order Details:*
-${order.items.map(item => `• ${item.name} x${item.quantity}`).join('\n')}
+${order.items.map(item => `• ${sanitizeText(item.name)} x${item.quantity}`).join('\n')}
 
 💰 *Total: R${order.total.toFixed(2)}*
 
-📍 *Pickup Details:*
-• Room: ${order.customer.roomNumber}
-• Customer: ${order.customer.name}
-
-✅ Your order is ready for pickup! Please come and collect it.
+${deliveryInfo}
 
 Thank you for choosing Mnandi Flame-Grilled! 🎉`
 
-    // Encode message for URL
-    const encodedMessage = encodeURIComponent(message)
-    
-    // Create WhatsApp URL
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`
-    
-    // Open WhatsApp in new tab
-    window.open(whatsappUrl, '_blank')
+      // Sanitize and encode message for URL
+      const sanitizedMessage = sanitizeMessageForWhatsApp(message)
+      const encodedMessage = encodeURIComponent(sanitizedMessage)
+      
+      // Create WhatsApp URL
+      const whatsappUrl = `https://wa.me/${sanitizedPhone}?text=${encodedMessage}`
+      
+      // Open WhatsApp in new tab
+      window.open(whatsappUrl, '_blank')
+    } catch (error) {
+      console.error('Error sending WhatsApp notification:', error)
+      alert('Error sending WhatsApp notification. Please check the phone number format.')
+    }
   }
 
   const filteredOrders = orders.filter(order => {
@@ -147,7 +174,7 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
     }
   }
 
-  if (loading) {
+  if (isChecking || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
@@ -155,42 +182,21 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
     )
   }
 
+  if (!isAuthenticated) {
+    return null // Will redirect via useAdminAuth
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-4xl font-bold text-gray-800">📋 Orders Management</h1>
-          <div className="flex items-center space-x-4">
-            <Link 
-              href="/admin/dashboard"
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-            >
-              <span>📊</span>
-              <span>Dashboard</span>
-            </Link>
-            <Link 
-              href="/menu"
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
-            >
-              <span>🍽️</span>
-              <span>Menu</span>
-            </Link>
-            <button
-              onClick={() => {
-                localStorage.removeItem('adminLoggedIn')
-                localStorage.removeItem('adminLoginTime')
-                router.push('/admin/login')
-              }}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Logout
-            </button>
-          </div>
+    <AdminLayout>
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Orders Management</h1>
+          <p className="text-gray-600">Track and manage customer orders</p>
         </div>
 
         {/* Filter Buttons */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Filter Orders:</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Filter Orders</h2>
           <div className="flex flex-wrap gap-2">
             {[
               { key: 'new', label: 'Active Orders', emoji: '🔄' },
@@ -200,7 +206,7 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
               <button
                 key={key}
                 onClick={() => setFilter(key as any)}
-                className={`px-4 py-2 rounded-lg transition-colors ${
+                className={`px-4 py-2.5 rounded-lg transition-colors font-medium min-h-[44px] ${
                   filter === key
                     ? 'bg-green-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -214,9 +220,9 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
         </div>
 
         {filteredOrders.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="text-center py-16 bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="text-6xl mb-4">📋</div>
-            <h2 className="text-2xl font-semibold text-gray-800 mb-2">No orders found</h2>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-2">No orders found</h2>
             <p className="text-gray-600">
               {filter === 'new' 
                 ? "No active orders to manage." 
@@ -229,31 +235,31 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
         ) : (
           <div className="grid gap-6">
             {filteredOrders.map((order) => (
-              <div key={order.orderId} className="bg-white rounded-xl shadow-lg p-6">
-                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-4">
+              <div key={order.orderId} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
                   <div>
-                    <h3 className="text-xl font-semibold text-gray-800">
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-800">
                       Order #{order.orderId.slice(-6)}
                     </h3>
-                    <p className="text-gray-600">
+                    <p className="text-sm sm:text-base text-gray-600">
                       {new Date(order.timestamp).toLocaleString()}
                     </p>
                   </div>
                   
-                  <div className="flex items-center space-x-4 mt-4 lg:mt-0">
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status || 'pending')}`}>
+                  <div className="flex items-center justify-between sm:justify-end space-x-4">
+                    <span className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium ${getStatusColor(order.status || 'pending')}`}>
                       {getStatusEmoji(order.status || 'pending')} {order.status || 'pending'}
                     </span>
-                    <span className="text-2xl font-bold text-green-600">
+                    <span className="text-xl sm:text-2xl font-bold text-green-600">
                       R{order.total.toFixed(2)}
                     </span>
                   </div>
                 </div>
 
                 {/* Customer Info */}
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <h4 className="font-semibold text-gray-800 mb-2">👤 Customer Details:</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4">
+                  <h4 className="font-semibold text-gray-800 mb-2 text-sm sm:text-base">👤 Customer Details:</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                     <p><strong>Name:</strong> {order.customer.name}</p>
                     <p><strong>Phone:</strong> {order.customer.phoneNumber}</p>
                     <p><strong>Type:</strong> 
@@ -320,51 +326,51 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-2">
                   {order.status === 'pending' && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                       <button
                         onClick={() => updateOrderStatus(order.orderId, 'preparing')}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        className="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium min-h-[44px] flex-1 sm:flex-none"
                       >
                         👨‍🍳 Start Cooking
                       </button>
                       <button
                         onClick={() => cancelOrder(order.orderId)}
-                        className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm"
+                        className="bg-red-600 text-white px-4 py-2.5 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium min-h-[44px] flex-1 sm:flex-none"
                       >
                         🚫 Cancel Order
                       </button>
                     </div>
                   )}
                   {order.status === 'preparing' && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                       <button
                         onClick={() => {
                           updateOrderStatus(order.orderId, 'ready')
                           sendWhatsAppNotification(order)
                         }}
-                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
+                        className="bg-green-600 text-white px-4 py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm font-medium min-h-[44px] flex-1 sm:flex-none"
                       >
                         ✅ Ready & Notify Customer
                       </button>
                       <button
                         onClick={() => cancelOrder(order.orderId)}
-                        className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm"
+                        className="bg-red-600 text-white px-4 py-2.5 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium min-h-[44px] flex-1 sm:flex-none"
                       >
                         🚫 Cancel Order
                       </button>
                     </div>
                   )}
                   {order.status === 'ready' && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                       <button
                         onClick={() => updateOrderStatus(order.orderId, 'completed')}
-                        className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                        className="bg-gray-600 text-white px-4 py-2.5 rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium min-h-[44px] flex-1 sm:flex-none"
                       >
                         {order.customer.deliveryType === 'delivery' ? '🚚 Mark Delivered' : '🏃‍♂️ Mark Collected'}
                       </button>
                       <button
                         onClick={() => sendWhatsAppNotification(order)}
-                        className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors text-sm"
+                        className="bg-green-500 text-white px-4 py-2.5 rounded-lg hover:bg-green-600 transition-colors text-sm font-medium min-h-[44px] flex-1 sm:flex-none"
                       >
                         📱 Send WhatsApp
                       </button>
@@ -386,6 +392,6 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
           </div>
         )}
       </div>
-    </div>
+    </AdminLayout>
   )
 }

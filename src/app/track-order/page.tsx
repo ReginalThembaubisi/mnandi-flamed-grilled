@@ -2,36 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-
-interface CartItem {
-  id: string
-  name: string
-  price: string
-  image?: string
-  description?: string
-  quantity: number
-  selectedSide?: string
-  isCombo?: boolean
-}
-
-interface CustomerInfo {
-  name: string
-  roomNumber: string
-  phoneNumber: string
-  deliveryType?: 'pickup' | 'delivery'
-  deliveryAddress?: string
-  instructions?: string
-}
-
-interface Order {
-  customer: CustomerInfo
-  items: CartItem[]
-  total: number
-  timestamp: string
-  orderId: string
-  confirmationNumber: string
-  status?: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled'
-}
+import { Order } from '@/types'
+import { Button } from '@/components/ui/Button'
+import { formatPrice, getStatusColor, getStatusEmoji, getStatusLabel } from '@/lib/utils'
+import { sanitizeOrderNumber, validateOrderNumber, safeJsonParse, safeJsonStringify } from '@/lib/security'
 
 export default function TrackOrderPage() {
   const [confirmationNumber, setConfirmationNumber] = useState('')
@@ -49,10 +23,26 @@ export default function TrackOrderPage() {
     setError('')
 
     try {
-      const orders = JSON.parse(localStorage.getItem('orders') || '[]')
+      // Sanitize order number
+      const sanitized = sanitizeOrderNumber(confirmationNumber)
+      
+      if (!sanitized) {
+        setError('Invalid confirmation number format')
+        setLoading(false)
+        return
+      }
+
+      // Validate format
+      if (!validateOrderNumber(sanitized)) {
+        setError('Invalid confirmation number format. Expected format: SHI-123456')
+        setLoading(false)
+        return
+      }
+
+      const orders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
       const foundOrder = orders.find((o: Order) => 
-        o.confirmationNumber === confirmationNumber.toUpperCase() || 
-        o.orderId === confirmationNumber.toUpperCase()
+        o.confirmationNumber?.toUpperCase() === sanitized || 
+        o.orderId?.toUpperCase() === sanitized
       )
 
       if (foundOrder) {
@@ -61,54 +51,13 @@ export default function TrackOrderPage() {
         setError('Order not found. Please check your confirmation number.')
       }
     } catch (err) {
+      console.error('Error looking up order:', err)
       setError('Error looking up order. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800'
-      case 'preparing': return 'bg-blue-100 text-blue-800'
-      case 'ready': return 'bg-green-100 text-green-800'
-      case 'completed': return 'bg-gray-100 text-gray-800'
-      case 'cancelled': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const getStatusEmoji = (status: string) => {
-    switch (status) {
-      case 'pending': 
-      case 'preparing': 
-        return '📝'
-      case 'ready': 
-        return '✅'
-      case 'completed': 
-        return '🎉'
-      case 'cancelled':
-        return '🚫'
-      default: 
-        return '❓'
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'pending': 
-      case 'preparing': 
-        return 'Order Placed'
-      case 'ready': 
-        return 'Ready'
-      case 'completed': 
-        return 'Completed'
-      case 'cancelled':
-        return 'Cancelled'
-      default: 
-        return 'Unknown'
-    }
-  }
 
   const getStatusMessage = (status: string, deliveryType?: string) => {
     switch (status) {
@@ -131,11 +80,11 @@ export default function TrackOrderPage() {
   const cancelOrder = () => {
     if (confirm('Are you sure you want to cancel this order? This action cannot be undone.')) {
       try {
-        const orders = JSON.parse(localStorage.getItem('orders') || '[]')
+        const orders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
         const updatedOrders = orders.map((o: Order) => 
           o.orderId === order?.orderId ? { ...o, status: 'cancelled' } : o
         )
-        localStorage.setItem('orders', JSON.stringify(updatedOrders))
+        localStorage.setItem('orders', safeJsonStringify(updatedOrders))
         setOrder({ ...order!, status: 'cancelled' })
         alert('Order cancelled successfully!')
       } catch (err) {
@@ -150,18 +99,18 @@ export default function TrackOrderPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-800 mb-4">
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800 mb-3 sm:mb-4">
               🔍 Track Your Order
             </h1>
-            <p className="text-gray-600">
+            <p className="text-sm sm:text-base text-gray-600">
               Enter your confirmation number to check your order status
             </p>
           </div>
 
           {/* Lookup Form */}
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-            <div className="flex flex-col md:flex-row gap-4">
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-6 sm:mb-8">
+            <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Confirmation Number
@@ -170,15 +119,18 @@ export default function TrackOrderPage() {
                   type="text"
                   placeholder="e.g., SHI-123456"
                   value={confirmationNumber}
-                  onChange={(e) => setConfirmationNumber(e.target.value.toUpperCase())}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  onChange={(e) => {
+                    const sanitized = sanitizeOrderNumber(e.target.value)
+                    setConfirmationNumber(sanitized)
+                  }}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-base min-h-[44px]"
                 />
               </div>
-              <div className="md:pt-6">
+              <div className="sm:pt-6 flex items-end">
                 <button
                   onClick={handleLookup}
                   disabled={loading}
-                  className="w-full md:w-auto bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full sm:w-auto bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium min-h-[44px] min-w-[120px]"
                 >
                   {loading ? 'Looking up...' : 'Track Order'}
                 </button>
@@ -271,7 +223,7 @@ export default function TrackOrderPage() {
                         </div>
                       </div>
                       <p className="font-semibold text-green-600">
-                        R{(parseFloat(item.price) * item.quantity).toFixed(2)}
+                        {formatPrice(parseFloat(item.price) * item.quantity)}
                       </p>
                     </div>
                   ))}
@@ -282,7 +234,7 @@ export default function TrackOrderPage() {
               <div className="border-t pt-4">
                 <div className="flex justify-between items-center text-xl font-bold">
                   <span>Total:</span>
-                  <span className="text-green-600">R{order.total.toFixed(2)}</span>
+                  <span className="text-green-600">{formatPrice(order.total)}</span>
                 </div>
                 <p className="text-sm text-gray-500 mt-2">
                   Order placed: {new Date(order.timestamp).toLocaleString()}
@@ -296,12 +248,14 @@ export default function TrackOrderPage() {
                       <p className="text-sm text-red-700 mb-3">
                         You can cancel your order before we start cooking. Once we start preparing your food, cancellation is not possible.
                       </p>
-                      <button
+                      <Button
                         onClick={cancelOrder}
-                        className="w-full bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 transition-colors font-semibold"
+                        variant="danger"
+                        size="lg"
+                        className="w-full"
                       >
                         🚫 Cancel This Order
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}

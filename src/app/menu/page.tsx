@@ -3,31 +3,21 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Papa from 'papaparse'
-
-interface MenuItem {
-  'Items': string
-  'Price': string
-  'Available': string
-  'Image URL': string
-  'Description': string
-  'Category': string
-}
-
-interface BusinessStatus {
-  'Day': string
-  'Open': string
-  'Opening Time': string
-  'Closing Time': string
-}
-
-interface SideOption {
-  'Side Name': string
-  'Available': string
-  'Price': string
-}
+import { MenuItem, BusinessStatus, SideOption } from '@/types'
+import { useToastContext } from '@/components/providers/ToastProvider'
+import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
+import { MenuCard } from '@/components/ui/MenuCard'
+import { formatPrice } from '@/lib/utils'
+import { MenuItemSkeleton } from '@/components/ui/LoadingSkeleton'
+import { config } from '@/lib/config'
+import { Icon } from '@/components/ui/IconMap'
+import { isBusinessOpen, getBusinessStatus } from '@/lib/businessStatus'
+import { safeJsonParse, safeJsonStringify } from '@/lib/security'
 
 
 export default function MenuPage() {
+  const toast = useToastContext()
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [businessStatus, setBusinessStatus] = useState<BusinessStatus[]>([])
   const [sideOptions, setSideOptions] = useState<SideOption[]>([])
@@ -39,7 +29,6 @@ export default function MenuPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
-  const [showSuccessMessage, setShowSuccessMessage] = useState<boolean>(false)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [imageErrors, setImageErrors] = useState<{[key: string]: boolean}>({})
   const [selectedSides, setSelectedSides] = useState<{[key: string]: string}>({})
@@ -79,13 +68,44 @@ export default function MenuPage() {
   useEffect(() => {
     fetchData()
     
-    // Set up interval to refresh data every 10 minutes (less intrusive)
+    // Set up interval to refresh data (configurable)
     const interval = setInterval(() => {
-      fetchData()
-    }, 600000) // 10 minutes
+      if (config.order.autoRefresh) {
+        fetchData()
+      }
+    }, config.order.refreshInterval)
     
     // Cleanup interval on component unmount
     return () => clearInterval(interval)
+  }, [])
+
+  // Periodically check business status (more frequently than full data refresh)
+  useEffect(() => {
+    const checkBusinessStatus = async () => {
+      const localStatus = getBusinessStatus()
+      if (!localStatus) {
+        // Local status is stale or missing - try Supabase
+        try {
+          const adminStatus = await isBusinessOpen()
+          if (adminStatus !== null) {
+            setIsOpen(adminStatus)
+          }
+        } catch (e) {
+          console.warn('Error checking business status:', e)
+        }
+      } else {
+        // Update with current local status
+        setIsOpen(localStatus.isOpen)
+      }
+    }
+
+    // Check immediately
+    checkBusinessStatus()
+
+    // Check every 5 minutes for business status updates
+    const statusInterval = setInterval(checkBusinessStatus, 5 * 60 * 1000)
+
+    return () => clearInterval(statusInterval)
   }, [])
 
   // Handle ESC key to close modal
@@ -120,9 +140,8 @@ export default function MenuPage() {
       
       // Fetch menu data from Google Sheets (with cache busting)
       const timestamp = Date.now()
-      const menuResponse = await fetch(
-        `https://docs.google.com/spreadsheets/d/e/2PACX-1vR1ZoV07-2CkaAs5mjdTboGX4hW7kJP0VczWCANVKSh73WbEdplzARXr3cXsUU4dhEq5AMZ2wN-CbyV/pub?gid=0&single=true&output=csv&t=${timestamp}`
-      )
+      const menuUrl = `${config.googleSheets.menuUrl}${config.googleSheets.menuUrl.includes('?') ? '&' : '?'}t=${timestamp}`
+      const menuResponse = await fetch(menuUrl)
       
       if (!menuResponse.ok) {
         throw new Error(`Menu fetch failed: ${menuResponse.status} - ${menuResponse.statusText}`)
@@ -131,13 +150,13 @@ export default function MenuPage() {
       
       // Fetch business status data from Google Sheets - try different gid numbers
       let statusData: { data: BusinessStatus[] } = { data: [] }
-      const statusGids = [1, 2, 3, 4, 5] // Try different gid numbers
+      const statusGids = config.googleSheets.statusGids
       
       for (const gid of statusGids) {
         try {
-          const statusResponse = await fetch(
+          const statusUrl = config.googleSheets.statusUrl || 
             `https://docs.google.com/spreadsheets/d/e/2PACX-1vR1ZoV07-2CkaAs5mjdTboGX4hW7kJP0VczWCANVKSh73WbEdplzARXr3cXsUU4dhEq5AMZ2wN-CbyV/pub?gid=${gid}&single=true&output=csv`
-          )
+          const statusResponse = await fetch(statusUrl)
           
           if (statusResponse.ok) {
             const statusText = await statusResponse.text()
@@ -231,18 +250,28 @@ export default function MenuPage() {
           status['Day']?.toLowerCase() === today.toLowerCase()
         )
         
-        // Check today's business status
-        
+        // Check today's business status from Google Sheets
         isOpenToday = todayStatus?.['Open']?.toLowerCase() === 'true'
-      } else {
-        // No business status data, defaulting to open
       }
       
-      // Check for admin override in localStorage
-      const adminBusinessStatus = localStorage.getItem('businessStatus')
-      if (adminBusinessStatus) {
-        const adminStatus = JSON.parse(adminBusinessStatus)
-        isOpenToday = adminStatus.isOpen
+      // Check for admin override (with staleness check)
+      // Check localStorage first (synchronous)
+      const localStatus = getBusinessStatus()
+      if (localStatus) {
+        // Admin has set a status (and it's not stale)
+        isOpenToday = localStatus.isOpen
+      } else {
+        // Local status is stale or missing - try Supabase async
+        try {
+          const adminStatus = await isBusinessOpen()
+          if (adminStatus !== null) {
+            isOpenToday = adminStatus
+          }
+          // If adminStatus is null, use Google Sheets status (already set above)
+        } catch (e) {
+          // Error fetching - use Google Sheets status (already set above)
+          console.warn('Error checking business status:', e)
+        }
       }
       
       setIsOpen(isOpenToday)
@@ -252,8 +281,7 @@ export default function MenuPage() {
       
       // Show success message for manual refresh
       if (isRefresh) {
-        setShowSuccessMessage(true)
-        setTimeout(() => setShowSuccessMessage(false), 3000)
+        toast.success('Menu data refreshed successfully!')
       }
       
     } catch (err) {
@@ -376,7 +404,13 @@ export default function MenuPage() {
 
   const addToCart = (item: MenuItem, quantity: number = 1, selectedSide?: string, extraCost: number = 0) => {
     try {
-      const existingCart = JSON.parse(localStorage.getItem('cart') || '[]')
+      // Validate quantity
+      if (quantity < 1 || quantity > 100) {
+        toast.error('Quantity must be between 1 and 100')
+        return
+      }
+      
+      const existingCart = safeJsonParse<any[]>(localStorage.getItem('cart') || '[]', [])
       const basePrice = parseFloat(item['Price']) || 0
       const totalPrice = basePrice + extraCost
       
@@ -394,15 +428,15 @@ export default function MenuPage() {
       }
       
       const updatedCart = [...existingCart, cartItem]
-      localStorage.setItem('cart', JSON.stringify(updatedCart))
+      localStorage.setItem('cart', safeJsonStringify(updatedCart))
       
       // Show success feedback
       const sideText = selectedSide ? ` with ${selectedSide}` : ''
       const quantityText = quantity > 1 ? `${quantity}x ` : ''
-      alert(`${quantityText}${item['Items']}${sideText} added to cart!`)
+      toast.success(`${quantityText}${item['Items']}${sideText} added to cart!`)
     } catch (err) {
       console.error('Error adding to cart:', err)
-      alert('Failed to add item to cart')
+      toast.error('Failed to add item to cart')
     }
   }
 
@@ -428,14 +462,7 @@ export default function MenuPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {[...Array(8)].map((_, index) => (
-              <div key={index} className="bg-white rounded-xl shadow-lg overflow-hidden animate-pulse">
-                <div className="h-48 bg-gray-200"></div>
-                <div className="p-4">
-                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                  <div className="h-6 bg-gray-200 rounded w-1/2"></div>
-                </div>
-              </div>
+              <MenuItemSkeleton key={index} />
             ))}
           </div>
         </div>
@@ -480,28 +507,21 @@ export default function MenuPage() {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex flex-col md:flex-row items-center justify-between mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-4 md:mb-0">
-            🍽️ Our Menu
+          <h1 className="flex items-center gap-3 text-4xl font-bold text-gray-800 mb-4 md:mb-0 font-display">
+            <Icon name="menu" size={40} className="text-primary-600" />
+            Our Menu
           </h1>
           <div className="flex items-center space-x-4">
             <div className="flex flex-col items-end space-y-1">
-              <button
-                onClick={() => fetchData(true)}
-                disabled={refreshing}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-              >
-                {refreshing ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Refreshing...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>🔄</span>
-                    <span>Refresh</span>
-                  </>
-                )}
-              </button>
+            <Button
+              onClick={() => fetchData(true)}
+              isLoading={refreshing}
+              variant="success"
+              size="md"
+            >
+              <Icon name="refresh" size={18} />
+              <span>Refresh</span>
+            </Button>
               {lastRefresh && (
                 <span className="text-xs text-gray-500">
                   Last updated: {lastRefresh.toLocaleTimeString()}
@@ -510,23 +530,23 @@ export default function MenuPage() {
             </div>
             <Link 
               href="/track-order"
-              className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center space-x-2"
+              className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2"
             >
-              <span>🔍</span>
+              <Icon name="search" size={18} />
               <span>Track Order</span>
             </Link>
             <Link 
               href="/admin/login"
               className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
             >
-              <span>👨‍🍳</span>
+              <Icon name="chef" size={18} />
               <span>Admin</span>
             </Link>
             <Link 
               href="/cart"
               className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
             >
-              <span>🛒</span>
+              <Icon name="cart" size={18} />
               <span>View Cart</span>
             </Link>
           </div>
@@ -538,38 +558,34 @@ export default function MenuPage() {
           </div>
         )}
         
-        {showSuccessMessage && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-6 text-center animate-fade-in">
-            <p className="text-green-800 text-sm">✅ Menu data refreshed successfully!</p>
-          </div>
-        )}
-        
         {/* Search and Filter */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <div className="flex flex-col md:flex-row gap-4">
+        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row gap-4">
             {/* Search */}
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                🔍 Search Menu
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                <Icon name="search" size={18} />
+                Search Menu
               </label>
               <input
                 type="text"
                 placeholder="Search for items..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-base min-h-[44px]"
               />
             </div>
             
             {/* Category Filter */}
-            <div className="md:w-64">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                📂 Category
+            <div className="sm:w-64">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                <Icon name="filter" size={18} />
+                Category
               </label>
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-base min-h-[44px]"
               >
                 {categories.map(category => (
                   <option key={category} value={category}>
@@ -583,218 +599,87 @@ export default function MenuPage() {
 
         {filteredItems.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">🔍</div>
+            <Icon name="search" size={64} className="mx-auto mb-4 text-gray-400" />
             <p className="text-gray-600 text-lg">No items found matching your search.</p>
-            <button
+            <Button
               onClick={() => {
                 setSearchTerm('')
                 setSelectedCategory('All')
               }}
-              className="mt-4 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+              variant="primary"
+              className="mt-4"
             >
               Clear Filters
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredItems.map((item, index) => (
-              <div key={index} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-                {/* Image */}
-                {item['Image URL'] && item['Image URL'].trim() !== '' ? (
-                  <div className="relative">
-                    <img
-                      src={item['Image URL']}
-                      alt={item['Items']}
-                      className="w-full h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => {
-                        setSelectedImage(item['Image URL'])
-                      }}
-                      onError={(e) => {
-                        // Image failed to load, set error state
-                        setImageErrors(prev => ({...prev, [item['Items']]: true}))
-                      }}
-                      onLoad={(e) => {
-                        e.currentTarget.nextElementSibling?.classList.add('hidden')
-                      }}
-                    />
-                    {!imageErrors[item['Items']] && (
-                      <div className="w-full h-48 bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
-                        <span className="text-6xl">🍽️</span>
-                      </div>
-                    )}
-                    {imageErrors[item['Items']] && (
-                      <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                        <div className="text-center">
-                          <span className="text-4xl mb-2 block">🍽️</span>
-                          <span className="text-sm text-gray-600">Image unavailable</span>
-                        </div>
-                      </div>
-                    )}
-                    {item['Category'] && (
-                      <div className="absolute top-2 left-2 bg-green-600 text-white px-2 py-1 rounded-full text-xs font-medium">
-                        {item['Category']}
-                      </div>
-                    )}
-                    {/* Click indicator */}
-                    <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded-full text-xs">
-                      🔍 Click to view
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-full h-48 bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center relative">
-                    <span className="text-6xl">🍽️</span>
-                    {item['Category'] && (
-                      <div className="absolute top-2 left-2 bg-green-600 text-white px-2 py-1 rounded-full text-xs font-medium">
-                        {item['Category']}
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">
-                    {item['Items']}
-                  </h3>
-                  
-                  {item['Description'] && (
-                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                      {item['Description']}
-                    </p>
-                  )}
-                  
-                  {includesSides(item) && (
-                    <div className="bg-green-50 border-l-4 border-green-400 p-2 rounded-lg mb-4">
-                      <p className="text-sm text-green-800">
-                        <strong>🍽️ Includes sides</strong> - Choose your preferred side when adding to cart
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-2xl font-bold text-green-600">
-                      R{item['Price']}
-                    </span>
-                  </div>
-                  
-                  {/* Quantity and Add to Cart */}
-                  <div className="space-y-3">
-                    {!isComboMeal(item) && (
-                      <div className="flex items-center justify-center space-x-3">
-                        <button
-                          onClick={() => {
-                            const currentQty = itemQuantities[item['Items']] || 1
-                            const newQty = Math.max(1, currentQty - 1)
-                            setItemQuantities(prev => ({...prev, [item['Items']]: newQty}))
-                          }}
-                          className="w-8 h-8 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-800"
-                        >
-                          −
-                        </button>
-                        <span className="w-8 text-center font-medium">{itemQuantities[item['Items']] || 1}</span>
-                        <button
-                          onClick={() => {
-                            const currentQty = itemQuantities[item['Items']] || 1
-                            const newQty = currentQty + 1
-                            setItemQuantities(prev => ({...prev, [item['Items']]: newQty}))
-                          }}
-                          className="w-8 h-8 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-800"
-                        >
-                          +
-                        </button>
-                      </div>
-                    )}
-                    
-                    <button
-                      onClick={() => handleAddToCart(item, itemQuantities[item['Items']] || 1)}
-                      className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-all duration-200 font-medium flex items-center justify-center space-x-2 transform hover:scale-105 active:scale-95"
-                    >
-                      <span>➕</span>
-                      <span>Add to Cart</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <MenuCard
+                key={index}
+                item={item}
+                onAddToCart={() => handleAddToCart(item, itemQuantities[item['Items']] || 1)}
+                quantity={itemQuantities[item['Items']] || 1}
+                onQuantityChange={(qty) => setItemQuantities(prev => ({...prev, [item['Items']]: qty}))}
+                showQuantityControls={!isComboMeal(item)}
+              />
             ))}
           </div>
         )}
       </div>
 
       {/* Image Modal */}
-      {selectedImage && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setSelectedImage(null)
-          }}
-        >
-          <div className="relative max-w-5xl max-h-[90vh] w-full h-full flex items-center justify-center">
+      <Modal
+        isOpen={!!selectedImage}
+        onClose={() => setSelectedImage(null)}
+        size="xl"
+      >
+        {selectedImage && (
+          <div className="relative max-h-[90vh] w-full flex items-center justify-center">
             <img
               src={selectedImage}
               alt="Food item"
               className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-              onClick={(e) => {
-                e.stopPropagation()
-              }}
-              onLoad={() => {}}
-              onError={() => {}}
+              onError={() => toast.error('Failed to load image')}
             />
-            <button
-              onClick={() => {
-                setSelectedImage(null)
-              }}
-              className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white rounded-full w-12 h-12 flex items-center justify-center transition-all text-xl font-bold"
-            >
-              ✕
-            </button>
-            <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white px-4 py-2 rounded-lg text-sm">
+            <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm backdrop-blur-sm">
+              <Icon name="close" size={16} />
               Press ESC or click outside to close
             </div>
-            <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-4 py-2 rounded-lg text-sm">
-              {selectedImage}
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Side Selection Modal */}
-      {showSideModal && currentItem && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowSideModal(false)}
-        >
-          <div 
-            className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-gray-800">
-                {currentItem?.['Items']?.startsWith('Side:') ? (
-                  <>🍽️ Add More Sides to Your Order</>
-                ) : (
-                  <>🍽️ Add Sides to Your Meal</>
-                )}
-                {includesSides(currentItem) && (
-                  <span className="text-sm text-green-600 ml-2">(First side included)</span>
-                )}
-                {!includesSides(currentItem) && !currentItem?.['Items']?.startsWith('Side:') && (
-                  <span className="text-sm text-orange-600 ml-2">(All sides cost extra)</span>
-                )}
-                {currentItem?.['Items']?.startsWith('Side:') && (
-                  <span className="text-sm text-blue-600 ml-2">(Add more sides)</span>
-                )}
-              </h3>
-              <button
-                onClick={() => setShowSideModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ✕
-              </button>
-            </div>
-            
+      <Modal
+        isOpen={showSideModal}
+        onClose={() => setShowSideModal(false)}
+        size="md"
+        title={
+          <div className="flex items-center gap-2">
+            <Icon name="menu" size={24} className="text-primary-600" />
+            {currentItem?.['Items']?.startsWith('Side:') 
+              ? 'Add More Sides to Your Order'
+              : 'Add Sides to Your Meal'
+            }
+          </div>
+        }
+      >
+        {currentItem && (
+          <>
             <div className="mb-4">
               <p className="text-gray-600 mb-2">
-                <strong>{currentItem['Items']}</strong> - R{currentItem['Price']}
+                <strong>{currentItem['Items']}</strong> - {formatPrice(currentItem['Price'])}
               </p>
+              {includesSides(currentItem) && (
+                <p className="text-sm text-green-600 mb-2">(First side included)</p>
+              )}
+              {!includesSides(currentItem) && !currentItem?.['Items']?.startsWith('Side:') && (
+                <p className="text-sm text-orange-600 mb-2">(All sides cost extra)</p>
+              )}
+              {currentItem?.['Items']?.startsWith('Side:') && (
+                <p className="text-sm text-blue-600 mb-2">(Add more sides)</p>
+              )}
               
               {/* Quantity Selection */}
               <div className="mb-4">
@@ -915,55 +800,40 @@ export default function MenuPage() {
             </div>
 
             <div className="flex space-x-3">
-              <button
+              <Button
                 onClick={() => {
                   setShowSideModal(false)
                   setSelectedMultipleSides([])
                 }}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                variant="outline"
+                className="flex-1"
               >
                 Cancel
-              </button>
+              </Button>
               {selectedMultipleSides.length > 0 && (
-                <button
+                <Button
                   onClick={handleFinishSides}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  variant="primary"
+                  className="flex-1"
                 >
                   Add to Cart ({selectedQuantity}x)
-                </button>
+                </Button>
               )}
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
 
       {/* Add More Sides Modal */}
-      {showAddMoreSidesModal && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setShowAddMoreSidesModal(false)
-            setSelectedMultipleSides([])
-          }}
-        >
-          <div 
-            className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-gray-800">
-                🍽️ Add More Sides?
-              </h3>
-              <button
-                onClick={() => {
-                  setShowAddMoreSidesModal(false)
-                  setSelectedMultipleSides([])
-                }}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ✕
-              </button>
-            </div>
+      <Modal
+        isOpen={showAddMoreSidesModal}
+        onClose={() => {
+          setShowAddMoreSidesModal(false)
+          setSelectedMultipleSides([])
+        }}
+        size="md"
+        title="🍽️ Add More Sides?"
+      >
             
             <div className="mb-6">
               <p className="text-gray-600 mb-4">
@@ -1013,22 +883,22 @@ export default function MenuPage() {
             </div>
 
             <div className="flex space-x-3">
-              <button
+              <Button
                 onClick={handleFinishSides}
-                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                variant="secondary"
+                className="flex-1"
               >
-                Finish ({selectedQuantity}x) {extraSidesCost > 0 && `+R${extraSidesCost.toFixed(2)}`}
-              </button>
-              <button
+                Finish ({selectedQuantity}x) {extraSidesCost > 0 && `+${formatPrice(extraSidesCost)}`}
+              </Button>
+              <Button
                 onClick={handleAddMoreSides}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                variant="primary"
+                className="flex-1"
               >
                 Add More Sides
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   )
 }

@@ -1,64 +1,78 @@
+'use client'
+
 import Link from 'next/link'
+import { Icon } from '@/components/ui/IconMap'
+import { motion } from 'framer-motion'
 
 export default function Home() {
+  const cards = [
+    {
+      icon: 'menu' as const,
+      title: 'Browse Menu',
+      description: 'Check out our delicious menu items with real-time updates from Google Sheets',
+      href: '/menu',
+      color: 'bg-primary-600 hover:bg-primary-700',
+    },
+    {
+      icon: 'orders' as const,
+      title: 'Manage Orders',
+      description: 'View and manage all customer orders with customer details',
+      href: '/admin/login',
+      color: 'bg-purple-600 hover:bg-purple-700',
+    },
+    {
+      icon: 'search' as const,
+      title: 'Track Order',
+      description: 'Check your order status with your confirmation number',
+      href: '/track-order',
+      color: 'bg-blue-600 hover:bg-blue-700',
+    },
+  ]
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-800 mb-4">
-            🍽️ Welcome to Mnandi Flame-Grilled
+    <main className="min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-red-50/30">
+      <div className="container mx-auto px-4 py-8 sm:py-12 lg:py-16">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-center mb-8 sm:mb-12"
+        >
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-3 sm:mb-4 font-display px-2">
+            Welcome to Mnandi Flame-Grilled
           </h1>
-          <p className="text-xl text-gray-600 mb-8">
+          <p className="text-base sm:text-lg lg:text-xl text-gray-600 mb-6 sm:mb-8 px-4">
             Delicious food, easy ordering, no WhatsApp hassle!
           </p>
-          {/* Developer credit removed for privacy */}
-        </div>
+        </motion.div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-          {/* Menu Card */}
-          <div className="bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-shadow">
-            <div className="text-4xl mb-4">🍽️</div>
-            <h2 className="text-2xl font-semibold text-gray-800 mb-3">Browse Menu</h2>
-            <p className="text-gray-600 mb-6">
-              Check out our delicious menu items with real-time updates from Google Sheets
-            </p>
-            <Link 
-              href="/menu"
-              className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors inline-block"
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 max-w-5xl mx-auto">
+          {cards.map((card, index) => (
+            <motion.div
+              key={card.href}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: index * 0.1 }}
+              whileHover={{ y: -8 }}
+              className="bg-white rounded-2xl shadow-lg p-6 sm:p-8 text-center hover:shadow-2xl transition-all duration-300"
             >
-              View Menu
-            </Link>
-          </div>
-          
-          {/* Orders Card */}
-          <div className="bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-shadow">
-            <div className="text-4xl mb-4">📋</div>
-            <h2 className="text-2xl font-semibold text-gray-800 mb-3">Manage Orders</h2>
-            <p className="text-gray-600 mb-6">
-              View and manage all customer orders with customer details
-            </p>
-            <Link 
-              href="/admin/login"
-              className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors inline-block"
-            >
-              Admin Login
-            </Link>
-          </div>
-          
-          {/* Track Order Card */}
-          <div className="bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-shadow">
-            <div className="text-4xl mb-4">🔍</div>
-            <h2 className="text-2xl font-semibold text-gray-800 mb-3">Track Order</h2>
-            <p className="text-gray-600 mb-6">
-              Check your order status with your confirmation number
-            </p>
-            <Link 
-              href="/track-order"
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors inline-block"
-            >
-              Track Order
-            </Link>
-          </div>
+              <div className="mb-4 sm:mb-6 flex justify-center">
+                <div className="rounded-full bg-primary-100 p-3 sm:p-4">
+                  <Icon name={card.icon} size={32} className="sm:w-10 sm:h-10 text-primary-600" />
+                </div>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2 sm:mb-3 font-display">{card.title}</h2>
+              <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
+                {card.description}
+              </p>
+              <Link 
+                href={card.href}
+                className={`${card.color} text-white px-6 py-3 rounded-lg transition-colors inline-block font-semibold text-sm sm:text-base min-h-[44px] flex items-center justify-center`}
+              >
+                {card.title === 'Browse Menu' ? 'View Menu' : card.title}
+              </Link>
+            </motion.div>
+          ))}
         </div>
       </div>
     </main>

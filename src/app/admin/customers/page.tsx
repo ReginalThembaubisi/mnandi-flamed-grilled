@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useAdminAuth } from '../../../hooks/useAdminAuth'
+import { clearAdminSession } from '../../../lib/adminAuth'
+import { AdminLayout } from '../../../components/admin/AdminLayout'
+import { sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone, safeJsonParse, safeJsonStringify } from '../../../lib/security'
 
 interface Customer {
   name: string
@@ -46,22 +50,24 @@ export default function CustomersPage() {
     isActive: true
   })
   const router = useRouter()
+  const { isAuthenticated, isChecking } = useAdminAuth()
 
   useEffect(() => {
-    // Check if admin is logged in
-    const isLoggedIn = localStorage.getItem('adminLoggedIn')
-    if (!isLoggedIn) {
-      router.push('/admin/login')
+    if (!isChecking && !isAuthenticated) {
+      return
+    }
+
+    if (!isAuthenticated) {
       return
     }
 
     loadData()
-  }, [router])
+  }, [router, isAuthenticated, isChecking])
 
   const loadData = () => {
     try {
       // Load customers from orders
-      const orders = JSON.parse(localStorage.getItem('orders') || '[]')
+      const orders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
       const customerMap = new Map<string, Customer>()
 
       orders.forEach((order: Order) => {
@@ -91,7 +97,7 @@ export default function CustomersPage() {
       ))
 
       // Load specials
-      const savedSpecials = JSON.parse(localStorage.getItem('specials') || '[]')
+      const savedSpecials = safeJsonParse<Special[]>(localStorage.getItem('specials') || '[]', [])
       setSpecials(savedSpecials)
     } catch (err) {
       console.error('Error loading data:', err)
@@ -103,18 +109,23 @@ export default function CustomersPage() {
   const createSpecial = () => {
     if (!newSpecial.title || !newSpecial.description) return
 
+    // Sanitize inputs
+    const sanitizedTitle = sanitizeText(newSpecial.title).substring(0, 100)
+    const sanitizedDescription = sanitizeText(newSpecial.description).substring(0, 500)
+    const sanitizedDiscount = sanitizeText(newSpecial.discount || '').substring(0, 50)
+
     const special: Special = {
       id: `special-${Date.now()}`,
-      title: newSpecial.title!,
-      description: newSpecial.description!,
-      discount: newSpecial.discount || '',
+      title: sanitizedTitle,
+      description: sanitizedDescription,
+      discount: sanitizedDiscount,
       validUntil: newSpecial.validUntil || '',
       isActive: newSpecial.isActive || true
     }
 
     const updatedSpecials = [...specials, special]
     setSpecials(updatedSpecials)
-    localStorage.setItem('specials', JSON.stringify(updatedSpecials))
+    localStorage.setItem('specials', safeJsonStringify(updatedSpecials))
     
     setNewSpecial({
       title: '',
@@ -127,13 +138,14 @@ export default function CustomersPage() {
   }
 
   const sendSpecialToAll = (special: Special) => {
-    const message = `🎉 *SPECIAL OFFER - Mnandi Flame-Grilled*
+    try {
+      const message = `🎉 *SPECIAL OFFER - Mnandi Flame-Grilled*
 
-${special.title}
+${sanitizeText(special.title)}
 
-${special.description}
+${sanitizeText(special.description)}
 
-${special.discount ? `💰 *Discount: ${special.discount}*` : ''}
+${special.discount ? `💰 *Discount: ${sanitizeText(special.discount)}*` : ''}
 
 ${special.validUntil ? `⏰ *Valid until: ${new Date(special.validUntil).toLocaleDateString()}*` : ''}
 
@@ -141,36 +153,52 @@ ${special.validUntil ? `⏰ *Valid until: ${new Date(special.validUntil).toLocal
 
 Thank you for being a valued customer! 🎉`
 
-    const encodedMessage = encodeURIComponent(message)
-    
-    // Send to all customers
-    customers.forEach(customer => {
-      let phoneNumber = customer.phoneNumber.replace(/\s/g, '')
+      const sanitizedMessage = sanitizeMessageForWhatsApp(message)
+      const encodedMessage = encodeURIComponent(sanitizedMessage)
       
-      // Add South African country code if not present
-      if (!phoneNumber.startsWith('27')) {
-        if (phoneNumber.startsWith('0')) {
-          phoneNumber = '27' + phoneNumber.substring(1)
-        } else {
-          phoneNumber = '27' + phoneNumber
-        }
-      }
+      // Send to all customers
+      customers.forEach(customer => {
+        try {
+          const phoneValidation = validateAndSanitizePhone(customer.phoneNumber)
+          if (!phoneValidation.valid) {
+            console.warn(`Invalid phone number for customer ${customer.name}: ${phoneValidation.error}`)
+            return
+          }
+          
+          let phoneNumber = phoneValidation.sanitized
+          
+          // Add South African country code if not present
+          if (phoneNumber.startsWith('0')) {
+            phoneNumber = '27' + phoneNumber.substring(1)
+          } else if (!phoneNumber.startsWith('27')) {
+            phoneNumber = '27' + phoneNumber
+          }
 
-      const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`
-      window.open(whatsappUrl, '_blank')
-    })
+          // Final security check
+          const sanitizedPhone = sanitizePhoneForWhatsApp(phoneNumber)
+          const whatsappUrl = `https://wa.me/${sanitizedPhone}?text=${encodedMessage}`
+          window.open(whatsappUrl, '_blank')
+        } catch (error) {
+          console.error(`Error sending to ${customer.name}:`, error)
+        }
+      })
+    } catch (error) {
+      console.error('Error sending special to all:', error)
+      alert('Error sending messages. Please check customer phone numbers.')
+    }
   }
 
   const sendSpecialToCustomer = (special: Special, customer: Customer) => {
-    const message = `🎉 *SPECIAL OFFER - Mnandi Flame-Grilled*
+    try {
+      const message = `🎉 *SPECIAL OFFER - Mnandi Flame-Grilled*
 
-Hi ${customer.name}! 👋
+Hi ${sanitizeText(customer.name)}! 👋
 
-${special.title}
+${sanitizeText(special.title)}
 
-${special.description}
+${sanitizeText(special.description)}
 
-${special.discount ? `💰 *Discount: ${special.discount}*` : ''}
+${special.discount ? `💰 *Discount: ${sanitizeText(special.discount)}*` : ''}
 
 ${special.validUntil ? `⏰ *Valid until: ${new Date(special.validUntil).toLocaleDateString()}*` : ''}
 
@@ -178,30 +206,41 @@ ${special.validUntil ? `⏰ *Valid until: ${new Date(special.validUntil).toLocal
 
 Thank you for being a valued customer! 🎉`
 
-    const encodedMessage = encodeURIComponent(message)
-    
-    let phoneNumber = customer.phoneNumber.replace(/\s/g, '')
-    
-    // Add South African country code if not present
-    if (!phoneNumber.startsWith('27')) {
+      const sanitizedMessage = sanitizeMessageForWhatsApp(message)
+      const encodedMessage = encodeURIComponent(sanitizedMessage)
+      
+      const phoneValidation = validateAndSanitizePhone(customer.phoneNumber)
+      if (!phoneValidation.valid) {
+        alert(`Invalid phone number: ${phoneValidation.error}`)
+        return
+      }
+      
+      let phoneNumber = phoneValidation.sanitized
+      
+      // Add South African country code if not present
       if (phoneNumber.startsWith('0')) {
         phoneNumber = '27' + phoneNumber.substring(1)
-      } else {
+      } else if (!phoneNumber.startsWith('27')) {
         phoneNumber = '27' + phoneNumber
       }
-    }
 
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`
-    window.open(whatsappUrl, '_blank')
+      // Final security check
+      const sanitizedPhone = sanitizePhoneForWhatsApp(phoneNumber)
+      const whatsappUrl = `https://wa.me/${sanitizedPhone}?text=${encodedMessage}`
+      window.open(whatsappUrl, '_blank')
+    } catch (error) {
+      console.error('Error sending special to customer:', error)
+      alert('Error sending message. Please check the phone number.')
+    }
   }
 
   const deleteSpecial = (specialId: string) => {
     const updatedSpecials = specials.filter(s => s.id !== specialId)
     setSpecials(updatedSpecials)
-    localStorage.setItem('specials', JSON.stringify(updatedSpecials))
+    localStorage.setItem('specials', safeJsonStringify(updatedSpecials))
   }
 
-  if (loading) {
+  if (isChecking || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
@@ -209,45 +248,38 @@ Thank you for being a valued customer! 🎉`
     )
   }
 
+  if (!isAuthenticated) {
+    return null // Will redirect via useAdminAuth
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="container mx-auto px-4 py-8">
+    <AdminLayout>
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row items-center justify-between mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-4 md:mb-0">
-            👥 Customer Management
-          </h1>
-          <div className="flex items-center space-x-4">
+        <div className="mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">Customer Management</h1>
+              <p className="text-gray-600">Manage customers and create special offers</p>
+            </div>
             <button
               onClick={() => setShowSpecialForm(true)}
-              className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
+              className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2 font-medium shadow-sm"
             >
               <span>🎉</span>
               <span>Create Special</span>
-            </button>
-            <Link 
-              href="/admin/dashboard"
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-            >
-              <span>📊</span>
-              <span>Dashboard</span>
-            </Link>
-            <button
-              onClick={() => {
-                localStorage.removeItem('adminLoggedIn')
-                localStorage.removeItem('adminLoginTime')
-                router.push('/admin/login')
-              }}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Logout
             </button>
           </div>
         </div>
 
         {/* Specials Section */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">🎉 Special Offers</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 text-xl">
+              🎉
+            </div>
+            <h2 className="text-2xl font-semibold text-gray-900">Special Offers</h2>
+          </div>
           
           {showSpecialForm && (
             <div className="bg-gray-50 rounded-lg p-4 mb-4">
@@ -350,58 +382,113 @@ Thank you for being a valued customer! 🎉`
         </div>
 
         {/* Customers Section */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">👥 Customer Database</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 text-xl">
+              👥
+            </div>
+            <h2 className="text-2xl font-semibold text-gray-900">Customer Database</h2>
+          </div>
           <p className="text-gray-600 mb-6">Total customers: {customers.length}</p>
           
           {customers.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No customers yet</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Customer</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Room</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Phone</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Orders</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Total Spent</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Last Order</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customers.map((customer, index) => (
-                    <tr key={index} className="border-b border-gray-100">
-                      <td className="py-3 px-4 font-medium text-gray-800">{customer.name}</td>
-                      <td className="py-3 px-4 text-gray-600">{customer.roomNumber}</td>
-                      <td className="py-3 px-4 text-gray-600">{customer.phoneNumber}</td>
-                      <td className="py-3 px-4 text-gray-600">{customer.totalOrders}</td>
-                      <td className="py-3 px-4 text-green-600 font-medium">R{customer.totalSpent.toFixed(2)}</td>
-                      <td className="py-3 px-4 text-gray-600 text-sm">
-                        {new Date(customer.lastOrderDate).toLocaleDateString()}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex space-x-2">
-                          {specials.map((special) => (
-                            <button
-                              key={special.id}
-                              onClick={() => sendSpecialToCustomer(special, customer)}
-                              className="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition-colors"
-                            >
-                              Send Special
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">👥</div>
+              <p className="text-gray-500 text-lg">No customers yet</p>
+              <p className="text-gray-400 text-sm mt-2">Customers will appear here after placing orders</p>
             </div>
+          ) : (
+            <>
+              {/* Mobile Card View */}
+              <div className="block md:hidden space-y-4">
+                {customers.map((customer, index) => (
+                  <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 text-lg mb-1">{customer.name}</h3>
+                        <p className="text-sm text-gray-600">Room: {customer.roomNumber}</p>
+                        <p className="text-sm text-gray-600">Phone: {customer.phoneNumber}</p>
+                      </div>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {customer.totalOrders} orders
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
+                      <div>
+                        <span className="text-gray-500">Total Spent:</span>
+                        <span className="text-green-600 font-semibold ml-1">R{customer.totalSpent.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Last Order:</span>
+                        <span className="text-gray-700 ml-1">{new Date(customer.lastOrderDate).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {specials.map((special) => (
+                        <button
+                          key={special.id}
+                          onClick={() => sendSpecialToCustomer(special, customer)}
+                          className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-blue-700 transition-colors font-medium shadow-sm min-h-[44px]"
+                        >
+                          Send Special
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-gray-200">
+                      <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">Customer</th>
+                      <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">Room</th>
+                      <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">Phone</th>
+                      <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">Orders</th>
+                      <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">Total Spent</th>
+                      <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">Last Order</th>
+                      <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {customers.map((customer, index) => (
+                      <tr key={index} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-4 px-4 font-medium text-gray-900">{customer.name}</td>
+                        <td className="py-4 px-4 text-gray-600">{customer.roomNumber}</td>
+                        <td className="py-4 px-4 text-gray-600">{customer.phoneNumber}</td>
+                        <td className="py-4 px-4">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {customer.totalOrders}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-green-600 font-semibold">R{customer.totalSpent.toFixed(2)}</td>
+                        <td className="py-4 px-4 text-gray-600 text-sm">
+                          {new Date(customer.lastOrderDate).toLocaleDateString()}
+                        </td>
+                        <td className="py-4 px-4">
+                          <div className="flex flex-wrap gap-2">
+                            {specials.map((special) => (
+                              <button
+                                key={special.id}
+                                onClick={() => sendSpecialToCustomer(special, customer)}
+                                className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-blue-700 transition-colors font-medium shadow-sm"
+                              >
+                                Send Special
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
-    </div>
+    </AdminLayout>
   )
 }

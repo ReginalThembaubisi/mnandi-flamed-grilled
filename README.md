@@ -1,10 +1,37 @@
-# 🍽️ Mnandi Flame-Grilled - University Residence Food Ordering System
+# Mnandi Flame-Grilled - University Residence Food Ordering System
 
 A modern, full-featured food ordering system designed for university residence food operations. Built with Next.js 13, TypeScript, and Tailwind CSS.
 
-## ✨ Features
+## Why I Built This
 
-### 🍽️ **Customer Features**
+I built this system for my friend who was struggling with managing orders and keeping track of finances for their university residence food business. The challenges they faced included:
+
+- **Order Management Chaos**: Receiving orders through WhatsApp made it difficult to track, organize, and manage multiple orders simultaneously
+- **Financial Tracking**: No systematic way to track daily sales, revenue, or customer spending patterns
+- **Manual Processes**: Everything was done manually, leading to errors, missed orders, and time-consuming administrative work
+- **Customer Management**: No centralized database to keep track of customers, their preferences, or order history
+
+This system solves all these problems by providing:
+- Automated order management and tracking
+- Real-time sales analytics and financial reporting
+- Customer database with spending insights
+- Professional ordering experience for customers
+- Mobile-friendly interface perfect for university students
+
+## Screenshots
+
+Check out the [screenshots folder](./screenshots/) to see the application in action! The folder contains screenshots showcasing:
+- Home page and navigation
+- Menu browsing and ordering
+- Cart and checkout process
+- Order tracking
+- Admin dashboard with analytics
+- Order management interface
+- Customer database
+
+## Features
+
+### Customer Features
 - **Real-time Menu**: Live updates from Google Sheets
 - **Search & Filter**: Find items by name, description, or category
 - **Shopping Cart**: Add items with quantity controls
@@ -12,7 +39,7 @@ A modern, full-featured food ordering system designed for university residence f
 - **Mobile Responsive**: Perfect for phone ordering
 - **Customer Info**: Save details for faster checkout
 
-### 👨‍🍳 **Admin Features**
+### Admin Features
 - **Secure Login**: Admin authentication system
 - **Order Management**: Track orders from pending to completed
 - **Customer Database**: Automatic customer collection and analytics
@@ -20,13 +47,13 @@ A modern, full-featured food ordering system designed for university residence f
 - **WhatsApp Integration**: Send order notifications and promotions
 - **Specials Management**: Create and send promotional offers
 
-### 📱 **WhatsApp Integration**
+### WhatsApp Integration
 - **Order Notifications**: Automatic WhatsApp when orders are ready
 - **Marketing Campaigns**: Send specials to all customers
 - **Individual Messaging**: Target specific customers
 - **Professional Templates**: Beautiful formatted messages
 
-## 🚀 **Getting Started**
+## Getting Started
 
 ### Prerequisites
 - Node.js 18+ 
@@ -55,7 +82,7 @@ A modern, full-featured food ordering system designed for university residence f
    http://localhost:3000
    ```
 
-## 📊 **Google Sheets Setup**
+## Google Sheets Setup
 
 ### Menu Sheet
 Create a Google Sheet with these columns:
@@ -79,13 +106,13 @@ Create a second sheet with:
 3. Copy the published URL
 4. Update URLs in `src/app/menu/page.tsx`
 
-## 🔐 **Admin Access**
+## Admin Access
 
 ### Default Credentials
 - **Username**: `admin`
 - **Password**: `mnandi2024`
 
-**⚠️ Change these in production!**
+**Warning: Change these in production!**
 
 ### Admin Features
 - **Dashboard**: `/admin/dashboard`
@@ -93,7 +120,7 @@ Create a second sheet with:
 - **Customers**: `/admin/customers`
 - **Login**: `/admin/login`
 
-## 📱 **Pages Overview**
+## Pages Overview
 
 ### Customer Pages
 - **Home**: `/` - Landing page with feature overview
@@ -108,7 +135,7 @@ Create a second sheet with:
 - **Orders**: `/orders` - Manage all customer orders
 - **Customers**: `/admin/customers` - Customer database and marketing
 
-## 🛠️ **Technology Stack**
+## Technology Stack
 
 - **Framework**: Next.js 13 (App Router)
 - **Language**: TypeScript
@@ -117,7 +144,7 @@ Create a second sheet with:
 - **Data Source**: Google Sheets
 - **Storage**: localStorage (client-side)
 
-## 📋 **Order Flow**
+## Order Flow
 
 1. **Customer browses menu** → Real-time data from Google Sheets
 2. **Adds items to cart** → Stored in localStorage
@@ -128,7 +155,7 @@ Create a second sheet with:
 7. **Customer gets notified** → WhatsApp when ready
 8. **Customer tracks order** → Using confirmation number
 
-## 🎯 **Business Benefits**
+## Business Benefits
 
 - **No WhatsApp Hassle**: Automated order management
 - **Professional System**: Looks like a real restaurant
@@ -137,7 +164,7 @@ Create a second sheet with:
 - **Real-time Updates**: Menu changes instantly
 - **Mobile Optimized**: Perfect for university students
 
-## 🔧 **Customization**
+## Customization
 
 ### Change Admin Credentials
 Edit `src/app/admin/login/page.tsx` line 19:
@@ -158,7 +185,7 @@ All styles use Tailwind CSS classes. Main color scheme:
 - **Secondary**: Blue (`bg-blue-600`)
 - **Accent**: Purple (`bg-purple-600`)
 
-## 📱 **WhatsApp Integration**
+## WhatsApp Integration
 
 The system automatically:
 - Formats phone numbers for South Africa (+27)
@@ -166,7 +193,7 @@ The system automatically:
 - Opens WhatsApp Web/App with pre-filled messages
 - Handles both individual and bulk messaging
 
-## 🚀 **Deployment**
+## Deployment
 
 ### Build for Production
 ```bash
@@ -177,7 +204,7 @@ npm start
 ### Environment Variables
 No environment variables required - uses client-side storage and Google Sheets.
 
-## 📞 **Support**
+## Support
 
 For issues or questions:
 1. Check the browser console for errors
@@ -185,7 +212,7 @@ For issues or questions:
 3. Ensure all dependencies are installed
 4. Check that localStorage is enabled
 
-## 🎉 **Success Tips**
+## Success Tips
 
 1. **Test with real data** - Use actual menu items and prices
 2. **Train the owner** - Show them how to use admin features
@@ -195,4 +222,4 @@ For issues or questions:
 
 ---
 
-**Built with ❤️ for university residence food operations**
+**Built to help friends manage their food business better**

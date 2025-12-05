@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react'
 import { getSupabase } from '../../../lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useAdminAuth } from '../../../hooks/useAdminAuth'
+import { setAdminPassword, verifyPasswordForChange, clearAdminSession, validateAdminSession, formatTimeRemaining } from '../../../lib/adminAuth'
+import { setBusinessStatus, getBusinessStatus, BusinessStatusData } from '../../../lib/businessStatus'
+import { AdminLayout } from '../../../components/admin/AdminLayout'
+import { useToastContext } from '@/components/providers/ToastProvider'
+import { sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone, safeJsonParse, safeJsonStringify } from '../../../lib/security'
 
 interface CartItem {
   id: string
@@ -43,7 +49,7 @@ export default function AdminDashboard() {
   const [dailySales, setDailySales] = useState<DailySales[]>([])
   const [loading, setLoading] = useState(true)
   const [liveOrderCount, setLiveOrderCount] = useState(0)
-  const [businessStatus, setBusinessStatus] = useState<{isOpen: boolean, message?: string}>({isOpen: true})
+  const [businessStatus, setBusinessStatus] = useState<BusinessStatusData>({isOpen: true, timestamp: new Date().toISOString()})
   const [newOrderNotification, setNewOrderNotification] = useState<Order | null>(null)
   const [lastOrderCount, setLastOrderCount] = useState(0)
   const [lastOrderIds, setLastOrderIds] = useState<string[]>([])
@@ -53,31 +59,38 @@ export default function AdminDashboard() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const router = useRouter()
+  const { isAuthenticated, isChecking, session } = useAdminAuth()
+  const [sessionWarning, setSessionWarning] = useState<string | null>(null)
+  const toast = useToastContext()
 
   useEffect(() => {
-    // Check if admin is logged in
-    const isLoggedIn = localStorage.getItem('adminLoggedIn')
-    if (!isLoggedIn) {
-      router.push('/admin/login')
+    if (!isChecking && !isAuthenticated) {
+      return
+    }
+
+    if (!isAuthenticated) {
       return
     }
 
     loadData()
     loadBusinessStatus()
 
-    // Realtime updates from Supabase
+    // Realtime updates from Supabase (if configured)
     const supabase = getSupabase()
-    const channel = supabase
-      .channel('orders-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        loadData()
-      })
-      .subscribe()
+    let channel: any = null
+    if (supabase) {
+      channel = supabase
+        .channel('orders-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+          loadData()
+        })
+        .subscribe()
+    }
 
     // Initialize order tracking
     const storedOrders = localStorage.getItem('orders')
     if (storedOrders) {
-      const currentOrders: Order[] = JSON.parse(storedOrders)
+      const currentOrders = safeJsonParse<Order[]>(storedOrders, [])
       setLastOrderCount(currentOrders.length)
       setLastOrderIds(currentOrders.map(order => order.orderId))
     }
@@ -89,15 +102,39 @@ export default function AdminDashboard() {
 
     return () => {
       clearInterval(orderInterval)
-      getSupabase().removeChannel(channel)
+      if (supabase && channel) {
+        supabase.removeChannel(channel)
+      }
     }
-  }, [router])
+  }, [router, isAuthenticated, isChecking])
+
+  // Check session timeout warning
+  useEffect(() => {
+    if (!isAuthenticated || !session.isValid) return
+
+    const checkSession = () => {
+      const authSession = validateAdminSession()
+      if (authSession.isValid && authSession.timeRemaining) {
+        // Show warning if less than 30 minutes remaining
+        if (authSession.timeRemaining < 30 * 60 * 1000) {
+          setSessionWarning(formatTimeRemaining(authSession.timeRemaining))
+        } else {
+          setSessionWarning(null)
+        }
+      }
+    }
+
+    checkSession()
+    const interval = setInterval(checkSession, 60000) // Check every minute
+
+    return () => clearInterval(interval)
+  }, [isAuthenticated, session.isValid])
 
   // Real-time order monitoring
   const checkForNewOrders = () => {
     const storedOrders = localStorage.getItem('orders')
     if (storedOrders) {
-      const currentOrders: Order[] = JSON.parse(storedOrders)
+      const currentOrders = safeJsonParse<Order[]>(storedOrders, [])
       const currentOrderIds = currentOrders.map(order => order.orderId)
       
       // Check for truly new orders (not just count changes)
@@ -125,19 +162,33 @@ export default function AdminDashboard() {
     }
   }
 
-  // Load business status from localStorage
-  const loadBusinessStatus = () => {
-    const status = localStorage.getItem('businessStatus')
+  // Load business status
+  const loadBusinessStatus = async () => {
+    const status = getBusinessStatus()
     if (status) {
-      setBusinessStatus(JSON.parse(status))
+      setBusinessStatus(status)
+    } else {
+      // Try to get from Supabase
+      const { getBusinessStatusFromSupabase } = await import('../../../lib/businessStatus')
+      const supabaseStatus = await getBusinessStatusFromSupabase()
+      if (supabaseStatus) {
+        setBusinessStatus(supabaseStatus)
+      }
     }
   }
 
   // Toggle business status
-  const toggleBusinessStatus = () => {
-    const newStatus = { ...businessStatus, isOpen: !businessStatus.isOpen }
-    setBusinessStatus(newStatus)
-    localStorage.setItem('businessStatus', JSON.stringify(newStatus))
+  const toggleBusinessStatus = async () => {
+    const newIsOpen = !businessStatus.isOpen
+    await setBusinessStatus(newIsOpen, businessStatus.message)
+    
+    // Update local state
+    const updatedStatus: BusinessStatusData = {
+      ...businessStatus,
+      isOpen: newIsOpen,
+      timestamp: new Date().toISOString()
+    }
+    setBusinessStatus(updatedStatus)
   }
 
   // Update order status
@@ -146,13 +197,15 @@ export default function AdminDashboard() {
       order.orderId === orderId ? { ...order, status: newStatus } : order
     )
     setOrders(updatedOrders)
-    localStorage.setItem('orders', JSON.stringify(updatedOrders))
+    localStorage.setItem('orders', safeJsonStringify(updatedOrders))
 
-    // Persist to Supabase
+    // Persist to Supabase (if configured)
     ;(async () => {
       try {
         const supabase = getSupabase()
-        await supabase.from('orders').update({ status: newStatus }).eq('order_id', orderId)
+        if (supabase) {
+          await supabase.from('orders').update({ status: newStatus }).eq('order_id', orderId)
+        }
       } catch (e) {
         // no-op; local state already updated
       }
@@ -174,68 +227,84 @@ export default function AdminDashboard() {
     }
   }
 
-  // Format phone number for WhatsApp
+  // Format phone number for WhatsApp (with security)
   const formatPhoneNumber = (phoneNumber: string) => {
-    // Clean phone number and add South African country code if missing
-    let cleanNumber = phoneNumber.replace(/\D/g, '')
-    
-    // If number starts with 0, replace with +27 (South Africa)
-    if (cleanNumber.startsWith('0')) {
-      cleanNumber = '27' + cleanNumber.substring(1)
+    try {
+      const validation = validateAndSanitizePhone(phoneNumber)
+      if (!validation.valid) {
+        throw new Error('Invalid phone number')
+      }
+      
+      let cleanNumber = validation.sanitized
+      
+      // If number starts with 0, replace with 27 (South Africa)
+      if (cleanNumber.startsWith('0')) {
+        cleanNumber = '27' + cleanNumber.substring(1)
+      }
+      // If number doesn't start with country code, add 27
+      else if (!cleanNumber.startsWith('27')) {
+        cleanNumber = '27' + cleanNumber
+      }
+      
+      // Final security check
+      return sanitizePhoneForWhatsApp(cleanNumber)
+    } catch (error) {
+      console.error('Error formatting phone number:', error)
+      throw new Error('Invalid phone number format')
     }
-    // If number doesn't start with country code, add +27
-    else if (!cleanNumber.startsWith('27')) {
-      cleanNumber = '27' + cleanNumber
-    }
-    
-    return cleanNumber
   }
 
   // Send WhatsApp notification
   const sendWhatsAppNotification = (order: Order) => {
-    const deliveryInfo = order.customer.deliveryType === 'delivery' 
-      ? `🚚 *Delivery Details:*
-• Address: ${order.customer.deliveryAddress}
-• Customer: ${order.customer.name}
+    try {
+      const deliveryInfo = order.customer.deliveryType === 'delivery' 
+        ? `🚚 *Delivery Details:*
+• Address: ${sanitizeText(order.customer.deliveryAddress || '')}
+• Customer: ${sanitizeText(order.customer.name)}
 
 ✅ Your order is ready for delivery! We'll be coming to deliver it soon.`
-      : `📍 *Pickup Details:*
-• Room: ${order.customer.roomNumber}
-• Customer: ${order.customer.name}
+        : `📍 *Pickup Details:*
+• Room: ${sanitizeText(order.customer.roomNumber)}
+• Customer: ${sanitizeText(order.customer.name)}
 
 ✅ Your order is ready for pickup! Please come and collect it.`
 
-    const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*
+      const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*
 
-📋 *Order #${order.orderId}*
+📋 *Order #${sanitizeText(order.orderId)}*
 
 📦 *Order Details:*
-${order.items.map(item => `• ${item.name} x${item.quantity}`).join('\n')}
+${order.items.map(item => `• ${sanitizeText(item.name)} x${item.quantity}`).join('\n')}
 
 💰 *Total: R${order.total.toFixed(2)}*
 
 ${deliveryInfo}
 
 🙏 Thank you for choosing Mnandi Flame-Grilled!`
-    
-    const phoneNumber = formatPhoneNumber(order.customer.phoneNumber)
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`
-    
-    // Send WhatsApp notification
-    
-    window.open(whatsappUrl, '_blank')
+      
+      const phoneNumber = formatPhoneNumber(order.customer.phoneNumber)
+      const sanitizedMessage = sanitizeMessageForWhatsApp(message)
+      const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(sanitizedMessage)}`
+      
+      // Send WhatsApp notification
+      window.open(whatsappUrl, '_blank')
+    } catch (error) {
+      console.error('Error sending WhatsApp notification:', error)
+      alert('Error sending WhatsApp notification. Please check the phone number format.')
+    }
   }
 
   const loadData = () => {
     try {
-      // Fetch from Supabase first
+      // Fetch from Supabase first (if configured)
       ;(async () => {
         const supabase = getSupabase()
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*')
-          .order('timestamp', { ascending: false })
-        if (!error && data) {
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .order('timestamp', { ascending: false })
+          if (!error && data) {
           const mapped: Order[] = data.map((r: any) => ({
             customer: r.customer,
             items: r.items,
@@ -250,9 +319,10 @@ ${deliveryInfo}
           setLiveOrderCount(active.length)
           setLoading(false)
           return
+          }
         }
         // Fallback to localStorage
-        const savedOrders = JSON.parse(localStorage.getItem('orders') || '[]')
+        const savedOrders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
         const ordersWithStatus: Order[] = savedOrders.map((order: Order) => ({
           ...order,
           status: order.status || 'pending'
@@ -306,8 +376,7 @@ ${deliveryInfo}
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('adminLoggedIn')
-    localStorage.removeItem('adminLoginTime')
+    clearAdminSession()
     router.push('/admin/login')
   }
 
@@ -463,12 +532,8 @@ ${deliveryInfo}
     e.preventDefault()
     setPasswordError('')
     
-    // Get current password from localStorage
-    const storedPassword = localStorage.getItem('adminPassword')
-    const currentStoredPassword = storedPassword || 'mnandi2024'
-    
     // Verify current password
-    if (currentPassword !== currentStoredPassword) {
+    if (!verifyPasswordForChange(currentPassword)) {
       setPasswordError('Current password is incorrect')
       return
     }
@@ -484,8 +549,8 @@ ${deliveryInfo}
       return
     }
     
-    // Update password
-    localStorage.setItem('adminPassword', newPassword)
+    // Update password (stores hashed version)
+    setAdminPassword(newPassword)
     
     // Reset form
     setCurrentPassword('')
@@ -494,7 +559,7 @@ ${deliveryInfo}
     setShowChangePassword(false)
     setPasswordError('')
     
-    alert('Password updated successfully!')
+    toast.success('Password updated successfully!')
   }
 
   const resetChangePassword = () => {
@@ -505,7 +570,7 @@ ${deliveryInfo}
     setPasswordError('')
   }
 
-  if (loading) {
+  if (isChecking || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
@@ -513,53 +578,61 @@ ${deliveryInfo}
     )
   }
 
+  if (!isAuthenticated) {
+    return null // Will redirect via useAdminAuth
+  }
+
   const todaySales = getTodaySales()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="container mx-auto px-4 py-8">
+    <AdminLayout>
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row items-center justify-between mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-4 md:mb-0">
-            👨‍🍳 Admin Dashboard
-          </h1>
-          <div className="flex items-center space-x-4">
-            <Link 
-              href="/admin/customers"
-              className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
-            >
-              <span>👥</span>
-              <span>Customers</span>
-            </Link>
-            <Link 
-              href="/orders"
-              className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center space-x-2"
-            >
-              <span>📋</span>
-              <span>Orders</span>
-            </Link>
-            <button
-              onClick={() => setShowChangePassword(true)}
-              className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center space-x-2"
-            >
-              <span>🔐</span>
-              <span>Change Password</span>
-            </button>
-            <button
-              onClick={clearAllData}
-              className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors flex items-center space-x-2"
-            >
-              <span>🗑️</span>
-              <span>Clear All Data</span>
-            </button>
-            <button
-              onClick={handleLogout}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Logout
-            </button>
-          </div>
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">Dashboard Overview</h1>
+          <p className="text-sm sm:text-base text-gray-600">Monitor your business performance and manage orders</p>
         </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-3 mb-4 sm:mb-6">
+          <button
+            onClick={() => setShowChangePassword(true)}
+            className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center space-x-2 text-sm font-medium min-h-[44px]"
+          >
+            <span>🔐</span>
+            <span>Change Password</span>
+          </button>
+          <button
+            onClick={clearAllData}
+            className="px-4 py-2.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center space-x-2 text-sm font-medium min-h-[44px]"
+          >
+            <span>🗑️</span>
+            <span>Clear All Data</span>
+          </button>
+        </div>
+
+        {/* Session Timeout Warning */}
+        {sessionWarning && (
+          <div className="mb-6 bg-yellow-100 border-l-4 border-yellow-500 p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <span className="text-2xl mr-3">⏰</span>
+                <div>
+                  <h3 className="text-lg font-semibold text-yellow-800">Session Expiring Soon</h3>
+                  <p className="text-yellow-700">
+                    Your session will expire in {sessionWarning}. Please save your work.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSessionWarning(null)}
+                className="text-yellow-600 hover:text-yellow-800 text-xl"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* New Order Notification */}
         {newOrderNotification && (
@@ -591,38 +664,61 @@ ${deliveryInfo}
         )}
 
         {/* Business Status Control */}
-        <div className="mb-8 bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between">
+        <div className="mb-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
-              <h2 className="text-2xl font-bold text-gray-800">🏪 Business Status</h2>
-              <div className={`px-4 py-2 rounded-full text-white font-semibold ${
-                businessStatus.isOpen ? 'bg-green-500' : 'bg-red-500'
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white text-xl">
+                🏪
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Business Status</h2>
+                <p className="text-sm text-gray-500">Control when customers can place orders</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className={`px-4 py-2 rounded-lg font-semibold text-sm ${
+                businessStatus.isOpen 
+                  ? 'bg-green-100 text-green-800' 
+                  : 'bg-red-100 text-red-800'
               }`}>
                 {businessStatus.isOpen ? '🟢 OPEN' : '🔴 CLOSED'}
               </div>
+              <button
+                onClick={toggleBusinessStatus}
+                className={`px-6 py-2.5 rounded-lg font-semibold transition-all text-sm ${
+                  businessStatus.isOpen 
+                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-sm' 
+                    : 'bg-green-600 hover:bg-green-700 text-white shadow-sm'
+                }`}
+              >
+                {businessStatus.isOpen ? 'Close Business' : 'Open Business'}
+              </button>
             </div>
-            <button
-              onClick={toggleBusinessStatus}
-              className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
-                businessStatus.isOpen 
-                  ? 'bg-red-600 hover:bg-red-700 text-white' 
-                  : 'bg-green-600 hover:bg-green-700 text-white'
-              }`}
-            >
-              {businessStatus.isOpen ? '🔴 Close Business' : '🟢 Open Business'}
-            </button>
           </div>
           {businessStatus.message && (
-            <div className="mt-4 p-3 bg-yellow-100 border-l-4 border-yellow-500 rounded">
-              <p className="text-yellow-800">{businessStatus.message}</p>
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-yellow-800 text-sm">{businessStatus.message}</p>
             </div>
           )}
         </div>
 
         {/* Change Password Modal */}
         {showChangePassword && (
-          <div className="mb-8 bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-4">🔐 Change Password</h2>
+          <div className="mb-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 text-xl">
+                  🔐
+                </div>
+                <h2 className="text-2xl font-semibold text-gray-900">Change Password</h2>
+              </div>
+              <button
+                onClick={resetChangePassword}
+                className="text-gray-400 hover:text-gray-600 text-xl"
+              >
+                ✕
+              </button>
+            </div>
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -633,7 +729,7 @@ ${deliveryInfo}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Enter current password"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   required
                 />
               </div>
@@ -647,7 +743,7 @@ ${deliveryInfo}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Enter new password (min 6 characters)"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   required
                   minLength={6}
                 />
@@ -662,7 +758,7 @@ ${deliveryInfo}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   required
                   minLength={6}
                 />
@@ -674,17 +770,17 @@ ${deliveryInfo}
                 </div>
               )}
               
-              <div className="flex space-x-3">
+              <div className="flex space-x-3 pt-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+                  className="flex-1 bg-green-600 text-white py-2.5 rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
                 >
                   Update Password
                 </button>
                 <button
                   type="button"
                   onClick={resetChangePassword}
-                  className="flex-1 bg-gray-500 text-white py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                  className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                 >
                   Cancel
                 </button>
@@ -693,68 +789,86 @@ ${deliveryInfo}
           </div>
         )}
 
-        {/* Simple Today's Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-6">
+        {/* Today's Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl shadow-sm border border-green-200 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">Today's Revenue</p>
-                <p className="text-3xl font-bold text-green-600">R{todaySales.totalRevenue.toFixed(2)}</p>
+                <p className="text-green-700 text-sm font-medium mb-1">Today's Revenue</p>
+                <p className="text-3xl font-bold text-green-900">R{todaySales.totalRevenue.toFixed(2)}</p>
+                <p className="text-xs text-green-600 mt-1">Total sales today</p>
               </div>
-              <div className="text-3xl">💰</div>
+              <div className="w-12 h-12 rounded-lg bg-green-500 flex items-center justify-center text-white text-xl">
+                💰
+              </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-sm border border-blue-200 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">Today's Orders</p>
-                <p className="text-3xl font-bold text-blue-600">{todaySales.orderCount}</p>
+                <p className="text-blue-700 text-sm font-medium mb-1">Today's Orders</p>
+                <p className="text-3xl font-bold text-blue-900">{todaySales.orderCount}</p>
+                <p className="text-xs text-blue-600 mt-1">Orders received</p>
               </div>
-              <div className="text-3xl">📋</div>
+              <div className="w-12 h-12 rounded-lg bg-blue-500 flex items-center justify-center text-white text-xl">
+                📋
+              </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl shadow-sm border border-purple-200 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">Total Customers</p>
-                <p className="text-3xl font-bold text-purple-600">{getTotalCustomers()}</p>
+                <p className="text-purple-700 text-sm font-medium mb-1">Total Customers</p>
+                <p className="text-3xl font-bold text-purple-900">{getTotalCustomers()}</p>
+                <p className="text-xs text-purple-600 mt-1">All-time customers</p>
               </div>
-              <div className="text-3xl">👥</div>
+              <div className="w-12 h-12 rounded-lg bg-purple-500 flex items-center justify-center text-white text-xl">
+                👥
+              </div>
             </div>
           </div>
         </div>
 
         {/* Live Order Counter & Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-green-100 text-sm">Live Order Count</p>
-                <p className="text-4xl font-bold">{liveOrderCount}</p>
-                <p className="text-green-100 text-xs mt-1">Active orders</p>
+                <p className="text-green-100 text-sm font-medium mb-1">Live Order Count</p>
+                <p className="text-4xl font-bold mb-1">{liveOrderCount}</p>
+                <p className="text-green-100 text-xs">Active orders in queue</p>
               </div>
-              <div className="text-4xl">📊</div>
+              <div className="w-16 h-16 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-3xl">
+                📊
+              </div>
             </div>
           </div>
 
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm">Average Order Value</p>
-                <p className="text-4xl font-bold">R{getCustomerAnalytics().averageOrderValue.toFixed(0)}</p>
-                <p className="text-blue-100 text-xs mt-1">Per customer</p>
+                <p className="text-blue-100 text-sm font-medium mb-1">Average Order Value</p>
+                <p className="text-4xl font-bold mb-1">R{getCustomerAnalytics().averageOrderValue.toFixed(0)}</p>
+                <p className="text-blue-100 text-xs">Per customer</p>
               </div>
-              <div className="text-4xl">💰</div>
+              <div className="w-16 h-16 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-3xl">
+                💰
+              </div>
             </div>
           </div>
         </div>
 
         {/* Weekly Summary */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">📅 Weekly Summary</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex items-center space-x-3 mb-4 sm:mb-6">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 text-xl">
+              📅
+            </div>
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-900">Weekly Summary</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div className="bg-gray-50 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-gray-700 mb-2">This Week</h3>
               <div className="space-y-2">
@@ -789,9 +903,14 @@ ${deliveryInfo}
         </div>
 
         {/* Monthly Analytics */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">📊 Monthly Performance (Last 30 Days)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex items-center space-x-3 mb-4 sm:mb-6">
+            <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 text-xl">
+              📊
+            </div>
+            <h2 className="text-lg sm:text-2xl font-semibold text-gray-900">Monthly Performance (Last 30 Days)</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-4 text-white">
               <div className="flex items-center justify-between">
                 <div>
@@ -859,9 +978,14 @@ ${deliveryInfo}
         </div>
 
         {/* Customer Analytics */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">👥 Customer Analytics</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex items-center space-x-3 mb-4 sm:mb-6">
+            <div className="w-10 h-10 rounded-lg bg-pink-100 flex items-center justify-center text-pink-600 text-xl">
+              👥
+            </div>
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-900">Customer Analytics</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             <div className="bg-purple-50 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -898,20 +1022,25 @@ ${deliveryInfo}
         </div>
 
         {/* Daily Revenue Chart */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">📈 Daily Revenue (Last 7 Days)</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex items-center space-x-3 mb-4 sm:mb-6">
+            <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 text-xl">
+              📈
+            </div>
+            <h2 className="text-lg sm:text-2xl font-semibold text-gray-900">Daily Revenue (Last 7 Days)</h2>
+          </div>
           <div className="space-y-3">
             {dailySales.slice(0, 7).map((day, index) => {
               const maxRevenue = Math.max(...dailySales.slice(0, 7).map(d => d.totalRevenue))
               const barWidth = maxRevenue > 0 ? (day.totalRevenue / maxRevenue) * 100 : 0
               return (
-                <div key={index} className="flex items-center space-x-4">
-                  <div className="w-20 text-sm text-gray-600">
+                <div key={index} className="flex items-center space-x-2 sm:space-x-4">
+                  <div className="w-12 sm:w-20 text-xs sm:text-sm text-gray-600 flex-shrink-0">
                     {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}
                   </div>
-                  <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
+                  <div className="flex-1 bg-gray-200 rounded-full h-5 sm:h-6 relative min-w-0">
                     <div 
-                      className="bg-gradient-to-r from-green-400 to-green-500 h-6 rounded-full flex items-center justify-end pr-2"
+                      className="bg-gradient-to-r from-green-400 to-green-500 h-5 sm:h-6 rounded-full flex items-center justify-end pr-1 sm:pr-2"
                       style={{ width: `${barWidth}%` }}
                     >
                       {day.totalRevenue > 0 && (
@@ -921,7 +1050,7 @@ ${deliveryInfo}
                       )}
                     </div>
                   </div>
-                  <div className="w-16 text-sm text-gray-600 text-right">
+                  <div className="w-12 sm:w-16 text-xs sm:text-sm text-gray-600 text-right flex-shrink-0">
                     {day.orderCount} orders
                   </div>
                 </div>
@@ -931,8 +1060,13 @@ ${deliveryInfo}
         </div>
 
         {/* Data Management */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">🗑️ Data Management</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex items-center space-x-3 mb-4 sm:mb-6">
+            <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center text-red-600 text-xl">
+              🗑️
+            </div>
+            <h2 className="text-lg sm:text-2xl font-semibold text-gray-900">Data Management</h2>
+          </div>
           <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -952,17 +1086,22 @@ ${deliveryInfo}
         </div>
 
         {/* Recent Orders */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">📋 Recent Orders</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+          <div className="flex items-center space-x-3 mb-4 sm:mb-6">
+            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 text-xl">
+              📋
+            </div>
+            <h2 className="text-lg sm:text-2xl font-semibold text-gray-900">Recent Orders</h2>
+          </div>
           {orders.filter(order => order.status !== 'completed' && order.status !== 'cancelled').length === 0 ? (
             <p className="text-gray-500 text-center py-8">No active orders</p>
           ) : (
             <div className="space-y-4">
               {orders.filter(order => order.status !== 'completed' && order.status !== 'cancelled').slice(0, 5).map((order) => (
-                <div key={order.orderId} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                      <h3 className="font-semibold text-gray-800">
+                <div key={order.orderId} className="border border-gray-200 rounded-lg p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
+                    <div className="flex items-center flex-wrap gap-2">
+                      <h3 className="font-semibold text-gray-800 text-sm sm:text-base">
                         Order #{order.orderId.slice(-6)}
                       </h3>
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -974,10 +1113,10 @@ ${deliveryInfo}
                         {order.status?.toUpperCase() || 'PENDING'}
                       </span>
                     </div>
-                    <span className="text-green-600 font-bold">R{order.total.toFixed(2)}</span>
+                    <span className="text-green-600 font-bold text-lg sm:text-xl">R{order.total.toFixed(2)}</span>
                   </div>
                   
-                  <div className="text-sm text-gray-600 mb-3">
+                  <div className="text-xs sm:text-sm text-gray-600 mb-3 space-y-1">
                     <p><strong>Customer:</strong> {order.customer.name}</p>
                     <p><strong>Phone:</strong> {order.customer.phoneNumber}</p>
                     <p><strong>Type:</strong> {order.customer.deliveryType === 'delivery' ? '🚚 Delivery' : '🏃‍♂️ Pickup'}</p>
@@ -992,13 +1131,13 @@ ${deliveryInfo}
                   </div>
 
                   {/* Simplified Order Controls */}
-                  <div className="flex items-center space-x-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <button
                       onClick={() => {
                         const phoneNumber = formatPhoneNumber(order.customer.phoneNumber)
                         window.open(`tel:${phoneNumber}`, '_self')
                       }}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                      className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2 min-h-[44px]"
                     >
                       <span>📞</span>
                       <span>Call Customer</span>
@@ -1006,7 +1145,7 @@ ${deliveryInfo}
                     
                     <button
                       onClick={() => updateOrderStatus(order.orderId, 'ready')}
-                      className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center space-x-2 ${
+                      className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center space-x-2 min-h-[44px] ${
                         order.status === 'ready' 
                           ? 'bg-green-600 text-white' 
                           : 'bg-green-100 text-green-800 hover:bg-green-200'
@@ -1018,7 +1157,7 @@ ${deliveryInfo}
                     
                     <button
                       onClick={() => updateOrderStatus(order.orderId, 'completed')}
-                      className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center space-x-2 ${
+                      className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center space-x-2 min-h-[44px] ${
                         order.status === 'completed' 
                           ? 'bg-gray-600 text-white' 
                           : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
@@ -1034,6 +1173,6 @@ ${deliveryInfo}
           )}
         </div>
       </div>
-    </div>
+    </AdminLayout>
   )
 }
