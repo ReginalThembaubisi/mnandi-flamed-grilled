@@ -1,51 +1,14 @@
 # Screenshots
 
-This folder contains screenshots of the Mnandi Flame-Grilled application.
+This folder contains screenshots of the Mnandi Flame-Grilled application showcasing key features and pages.
 
-## How to Add Screenshots
+## Screenshot Descriptions
 
-1. Take screenshots of key pages/features:
-   - Home page
-   - Menu page
-   - Cart page
-   - Checkout page
-   - Order tracking page
-   - Admin dashboard
-   - Admin orders page
-   - Admin customers page
-   - Admin login page
-
-2. Save screenshots with descriptive names:
-   - `home-page.png`
-   - `menu-page.png`
-   - `cart-page.png`
-   - `checkout-page.png`
-   - `track-order-page.png`
-   - `admin-dashboard.png`
-   - `admin-orders.png`
-   - `admin-customers.png`
-   - `admin-login.png`
-   - `mobile-view.png` (optional - mobile responsive views)
-
-3. Recommended screenshot sizes:
-   - Desktop: 1920x1080 or 1440x900
-   - Mobile: 375x667 (iPhone) or 390x844 (iPhone Pro)
-
-4. File formats:
-   - PNG (recommended for screenshots)
-   - JPG (acceptable, but PNG is preferred)
-
-## Screenshot Guidelines
-
-- Use clear, high-quality images
-- Show the most important features
-- Include both desktop and mobile views if possible
-- Crop out unnecessary browser chrome
-- Ensure text is readable
-- Use consistent styling/theme
-
-## Current Screenshots
-
-_Add your screenshots here and update this section as you add them._
-
-
+- **Welcome page.png** - Landing/home page with feature overview
+- **menu.png** - Menu browsing page with items and categories
+- **Cart.png** - Shopping cart view showing selected items
+- **Order Confirmation.png** - Order confirmation page with order details
+- **order management.png** - Admin order management interface
+- **admin panel.png** - Admin dashboard with analytics
+- **Order ready, sent to whatsapp.png** - Order ready notification sent via WhatsApp
+- **custormer odering.png** - Customer ordering flow

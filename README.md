@@ -18,17 +18,6 @@ This system solves all these problems by providing:
 - Professional ordering experience for customers
 - Mobile-friendly interface perfect for university students
 
-## Screenshots
-
-Check out the [screenshots folder](./screenshots/) to see the application in action! The folder contains screenshots showcasing:
-- Home page and navigation
-- Menu browsing and ordering
-- Cart and checkout process
-- Order tracking
-- Admin dashboard with analytics
-- Order management interface
-- Customer database
-
 ## Features
 
 ### Customer Features
