@@ -180,6 +180,7 @@ export default function AdminDashboard() {
   // Toggle business status
   const toggleBusinessStatus = async () => {
     const newIsOpen = !businessStatus.isOpen
+    // Use updateBusinessStatus (aliased import) to save to localStorage/Supabase
     await updateBusinessStatus(newIsOpen, businessStatus.message)
     
     // Update local state
