@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAdminAuth } from '../../../hooks/useAdminAuth'
 import { setAdminPassword, verifyPasswordForChange, clearAdminSession, validateAdminSession, formatTimeRemaining } from '../../../lib/adminAuth'
-import { setBusinessStatus, getBusinessStatus, BusinessStatusData } from '../../../lib/businessStatus'
+import { setBusinessStatus as updateBusinessStatus, getBusinessStatus, BusinessStatusData } from '../../../lib/businessStatus'
 import { AdminLayout } from '../../../components/admin/AdminLayout'
 import { useToastContext } from '@/components/providers/ToastProvider'
 import { sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone, safeJsonParse, safeJsonStringify } from '../../../lib/security'
@@ -180,7 +180,7 @@ export default function AdminDashboard() {
   // Toggle business status
   const toggleBusinessStatus = async () => {
     const newIsOpen = !businessStatus.isOpen
-    await setBusinessStatus(newIsOpen, businessStatus.message)
+    await updateBusinessStatus(newIsOpen, businessStatus.message)
     
     // Update local state
     const updatedStatus: BusinessStatusData = {

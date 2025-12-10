@@ -93,7 +93,7 @@ export default function CheckoutPage() {
     const roomValidation = validateAndSanitizeRoomNumber(customerInfo.roomNumber)
     
     // Validate address if delivery
-    let addressValidation = { valid: true, sanitized: customerInfo.deliveryAddress || '' }
+    let addressValidation: { valid: boolean; sanitized: string; error?: string } = { valid: true, sanitized: customerInfo.deliveryAddress || '' }
     if (customerInfo.deliveryType === 'delivery') {
       addressValidation = validateAndSanitizeAddress(customerInfo.deliveryAddress || '', true)
     }
@@ -109,7 +109,7 @@ export default function CheckoutPage() {
         roomValidation.error,
         addressValidation.error,
         instructionsValidation.error
-      ].filter(Boolean)
+      ].filter((error): error is string => Boolean(error))
       
       alert(`Please fix the following errors:\n${errors.join('\n')}`)
       return

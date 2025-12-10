@@ -1,0 +1,23 @@
+warning: in the working copy of 'src/app/admin/dashboard/page.tsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/app/admin/dashboard/page.tsx b/src/app/admin/dashboard/page.tsx[m
+[1mindex 965bc66..3811efa 100644[m
+[1m--- a/src/app/admin/dashboard/page.tsx[m
+[1m+++ b/src/app/admin/dashboard/page.tsx[m
+[36m@@ -6,7 +6,7 @@[m [mimport { useRouter } from 'next/navigation'[m
+ import Link from 'next/link'[m
+ import { useAdminAuth } from '../../../hooks/useAdminAuth'[m
+ import { setAdminPassword, verifyPasswordForChange, clearAdminSession, validateAdminSession, formatTimeRemaining } from '../../../lib/adminAuth'[m
+[31m-import { setBusinessStatus, getBusinessStatus, BusinessStatusData } from '../../../lib/businessStatus'[m
+[32m+[m[32mimport { setBusinessStatus as updateBusinessStatus, getBusinessStatus, BusinessStatusData } from '../../../lib/businessStatus'[m
+ import { AdminLayout } from '../../../components/admin/AdminLayout'[m
+ import { useToastContext } from '@/components/providers/ToastProvider'[m
+ import { sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone, safeJsonParse, safeJsonStringify } from '../../../lib/security'[m
+[36m@@ -180,7 +180,7 @@[m [mexport default function AdminDashboard() {[m
+   // Toggle business status[m
+   const toggleBusinessStatus = async () => {[m
+     const newIsOpen = !businessStatus.isOpen[m
+[31m-    await setBusinessStatus(newIsOpen, businessStatus.message)[m
+[32m+[m[32m    await updateBusinessStatus(newIsOpen, businessStatus.message)[m
+     [m
+     // Update local state[m
+     const updatedStatus: BusinessStatusData = {[m
