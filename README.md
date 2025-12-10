@@ -2,6 +2,10 @@
 
 A modern, full-featured food ordering system designed for university residence food operations. Built with Next.js 13, TypeScript, and Tailwind CSS.
 
+## 🚀 Live Demo
+
+[View Live Application](https://mnandi-flamed-grilled.vercel.app)
+
 ## Why I Built This
 
 I built this system for my friend who was struggling with managing orders and keeping track of finances for their university residence food business. The challenges they faced included:
@@ -97,11 +101,9 @@ Create a second sheet with:
 
 ## Admin Access
 
-### Default Credentials
-- **Username**: `admin`
-- **Password**: `mnandi2024`
+### Admin Credentials
 
-**Warning: Change these in production!**
+Admin credentials must be configured in `src/app/admin/login/page.tsx` before deployment. **Never commit default credentials to version control.**
 
 ### Admin Features
 - **Dashboard**: `/admin/dashboard`
