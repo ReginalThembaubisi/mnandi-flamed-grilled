@@ -19,7 +19,7 @@ public class BusinessConfigService {
     @Autowired
     private BusinessConfigRepository configRepository;
 
-    @javax.annotation.PostConstruct
+    @jakarta.annotation.PostConstruct
     public void init() {
         getConfig(); // Ensure default config exists on startup
     }
