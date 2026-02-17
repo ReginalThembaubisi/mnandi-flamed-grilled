@@ -23,7 +23,6 @@ Railway will detect the code. We need to tell it how to build and run the Java b
     - **Root Directory**: Leave as `/` (since `Dockerfile` is in the root).
 4.  Go to **Variables**.
     - Add the following variables:
-        - `PORT`: `8080`
         - `SPRING_DATASOURCE_USERNAME`: `postgres` (or as provided by Railway DB)
         - `SPRING_DATASOURCE_PASSWORD`: (as provided by Railway DB)
         - `JDBC_DATABASE_URL`: (the JDBC URL for Postgres, e.g., `jdbc:postgresql://host:port/db`)
