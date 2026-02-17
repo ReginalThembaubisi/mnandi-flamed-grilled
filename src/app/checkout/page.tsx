@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { getSupabase } from '../../lib/supabaseClient'
+import { orderAPI } from '@/lib/javaAPI'
 import { CartItem, CustomerInfo } from '@/types'
 import { Button } from '@/components/ui/Button'
+import { Icon } from '@/components/ui/IconMap'
 import { formatPrice, calculateCartTotal, generateOrderNumber } from '@/lib/utils'
 import { config } from '@/lib/config'
-import { 
-  validateAndSanitizeName, 
-  validateAndSanitizePhone, 
+import { motion } from 'framer-motion'
+import {
+  validateAndSanitizeName,
+  validateAndSanitizePhone,
   validateAndSanitizeRoomNumber,
   validateAndSanitizeAddress,
   validateAndSanitizeInstructions,
@@ -35,7 +37,7 @@ export default function CheckoutPage() {
     try {
       const cart = safeJsonParse<CartItem[]>(localStorage.getItem('cart') || '[]', [])
       setCartItems(cart)
-      
+
       // Load saved customer info if available
       const savedInfo = localStorage.getItem('customerInfo')
       if (savedInfo) {
@@ -59,7 +61,7 @@ export default function CheckoutPage() {
   const handleInputChange = (field: keyof CustomerInfo, value: string) => {
     // Sanitize input based on field type
     let sanitizedValue = value
-    
+
     if (field === 'name') {
       const validation = validateAndSanitizeName(value)
       sanitizedValue = validation.sanitized
@@ -75,7 +77,7 @@ export default function CheckoutPage() {
     } else if (field === 'instructions') {
       sanitizedValue = value.substring(0, 500)
     }
-    
+
     setCustomerInfo(prev => ({
       ...prev,
       [field]: sanitizedValue
@@ -91,16 +93,16 @@ export default function CheckoutPage() {
     const nameValidation = validateAndSanitizeName(customerInfo.name)
     const phoneValidation = validateAndSanitizePhone(customerInfo.phoneNumber)
     const roomValidation = validateAndSanitizeRoomNumber(customerInfo.roomNumber)
-    
+
     // Validate address if delivery
     let addressValidation: { valid: boolean; sanitized: string; error?: string } = { valid: true, sanitized: customerInfo.deliveryAddress || '' }
     if (customerInfo.deliveryType === 'delivery') {
       addressValidation = validateAndSanitizeAddress(customerInfo.deliveryAddress || '', true)
     }
-    
+
     // Validate instructions
     const instructionsValidation = validateAndSanitizeInstructions(customerInfo.instructions || '')
-    
+
     // Check if all validations pass
     if (!nameValidation.valid || !phoneValidation.valid || !roomValidation.valid || !addressValidation.valid || !instructionsValidation.valid) {
       const errors = [
@@ -110,11 +112,11 @@ export default function CheckoutPage() {
         addressValidation.error,
         instructionsValidation.error
       ].filter((error): error is string => Boolean(error))
-      
+
       alert(`Please fix the following errors:\n${errors.join('\n')}`)
       return
     }
-    
+
     // Create sanitized customer info
     const sanitizedCustomerInfo: CustomerInfo = {
       name: nameValidation.sanitized,
@@ -124,14 +126,14 @@ export default function CheckoutPage() {
       deliveryAddress: addressValidation.sanitized || undefined,
       instructions: instructionsValidation.sanitized || undefined
     }
-    
+
     // Save customer info for future orders
     localStorage.setItem('customerInfo', safeJsonStringify(sanitizedCustomerInfo))
-    
+
     // Generate order confirmation number
     const newOrderNumber = generateOrderNumber(config.order.confirmationPrefix)
     setOrderNumber(newOrderNumber)
-    
+
     // Create order summary with sanitized data
     const orderSummary = {
       customer: sanitizedCustomerInfo,
@@ -142,47 +144,45 @@ export default function CheckoutPage() {
       confirmationNumber: newOrderNumber,
       status: 'pending' as const
     }
-    
-    // Save to Supabase (shared)
-    ;(async () => {
-      try {
-        const supabase = getSupabase()
-        if (!supabase) {
-          throw new Error('Supabase not configured')
+
+      // Save to Java Spring Boot backend
+      ; (async () => {
+        try {
+          const orderData = {
+            customerName: sanitizedCustomerInfo.name,
+            customerPhone: sanitizedCustomerInfo.phoneNumber,
+            customerRoom: sanitizedCustomerInfo.roomNumber,
+            customerResidence: sanitizedCustomerInfo.deliveryAddress || 'Pickup',
+            items: safeJsonStringify(cartItems),
+            total: totalPrice,
+            notes: sanitizedCustomerInfo.instructions || ''
+          };
+
+          const createdOrder = await orderAPI.create(orderData);
+
+          // Update order number with the one from backend
+          setOrderNumber(createdOrder.confirmationNumber);
+
+          console.log('Order created successfully:', createdOrder);
+        } catch (e) {
+          console.error('Failed to create order in backend:', e);
+          // Fallback to local storage if backend insert fails
+          const existing = safeJsonParse<any[]>(localStorage.getItem('orders') || '[]', []);
+          existing.push(orderSummary);
+          localStorage.setItem('orders', safeJsonStringify(existing));
         }
-        const { error } = await supabase.from('orders').insert({
-          order_id: orderSummary.orderId,
-          confirmation_number: orderSummary.confirmationNumber,
-          customer: orderSummary.customer,
-          items: orderSummary.items,
-          total: orderSummary.total,
-          status: orderSummary.status,
-          delivery_type: orderSummary.customer.deliveryType,
-          delivery_address: orderSummary.customer.deliveryAddress || null,
-          instructions: orderSummary.customer.instructions || null
-        })
-        if (error) {
-          console.error('Supabase insert error:', error.message)
-          throw error
-        }
-      } catch (e) {
-        // Fallback to local storage if remote insert fails
-        const existing = safeJsonParse<any[]>(localStorage.getItem('orders') || '[]', [])
-        existing.push(orderSummary)
-        localStorage.setItem('orders', safeJsonStringify(existing))
-      }
-    })()
-    
+      })();
+
     // Clear cart
     localStorage.removeItem('cart')
-    
+
     setOrderSubmitted(true)
   }
 
-  const isFormValid = customerInfo.name.trim() && 
-                     customerInfo.roomNumber.trim() && 
-                     customerInfo.phoneNumber.trim() &&
-                     (customerInfo.deliveryType === 'pickup' || (customerInfo.deliveryAddress && customerInfo.deliveryAddress.trim()))
+  const isFormValid = customerInfo.name.trim() &&
+    customerInfo.roomNumber.trim() &&
+    customerInfo.phoneNumber.trim() &&
+    (customerInfo.deliveryType === 'pickup' || (customerInfo.deliveryAddress && customerInfo.deliveryAddress.trim()))
 
   if (loading) {
     return (
@@ -200,7 +200,7 @@ export default function CheckoutPage() {
             <div className="text-6xl mb-4">🛒</div>
             <h2 className="text-2xl font-semibold text-gray-800 mb-2">Your cart is empty</h2>
             <p className="text-gray-600 mb-6">Add some delicious items to your cart first!</p>
-            <Link 
+            <Link
               href="/menu"
               className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors inline-flex items-center space-x-2"
             >
@@ -215,98 +215,144 @@ export default function CheckoutPage() {
 
   if (orderSubmitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-              <div className="text-6xl mb-4">✅</div>
-              <h1 className="text-3xl font-bold text-gray-800 mb-4">Order Confirmed!</h1>
-              <p className="text-gray-600 mb-6">
-                Thank you, <strong>{customerInfo.name}</strong>! Your order has been received.
+      <div className="min-h-screen bg-neutral-950">
+        <div className="container mx-auto px-4 py-16">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-w-2xl mx-auto"
+          >
+            <div className="bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl p-8 sm:p-12 text-center">
+              <div className="w-24 h-24 bg-green-500/20 border-2 border-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Icon name="check" size={48} className="text-green-500" />
+              </div>
+              <h1 className="text-4xl font-bold text-white mb-4">Order Confirmed!</h1>
+              <p className="text-white/60 mb-8 text-lg">
+                Thank you, <strong className="text-white">{customerInfo.name}</strong>! Your order has been received.
               </p>
-              
-              <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                <h3 className="font-semibold text-blue-800 mb-2">📋 Order Confirmation Number:</h3>
-                <p className="text-2xl font-bold text-blue-900">
+
+              <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-6 mb-6">
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <Icon name="orders" size={20} className="text-orange-400" />
+                  <h3 className="font-bold text-orange-400">Order Confirmation Number</h3>
+                </div>
+                <p className="text-3xl font-bold text-orange-500 mb-2">
                   {safeJsonParse<any[]>(localStorage.getItem('orders') || '[]', []).slice(-1)[0]?.confirmationNumber || 'SHI-000000'}
                 </p>
-                <p className="text-sm text-blue-700 mt-2">
-                  Save this number! You'll need it to track your order.
+                <p className="text-sm text-orange-400/80">
+                  Save this number for reference!
                 </p>
               </div>
-              
-              <div className="bg-green-50 rounded-lg p-4 mb-6">
-                <h3 className="font-semibold text-green-800 mb-2">Order Details:</h3>
-                <p className="text-green-700">
-                  <strong>Room:</strong> {customerInfo.roomNumber}<br/>
-                  <strong>Phone:</strong> {customerInfo.phoneNumber}<br/>
-                  <strong>Type:</strong> {customerInfo.deliveryType === 'delivery' ? '🚚 Delivery' : '🏃‍♂️ Pickup'}<br/>
+
+              <div className="bg-neutral-800/50 border border-white/10 rounded-2xl p-6 mb-6 text-left">
+                <h3 className="font-bold text-white mb-4">Order Details</h3>
+                <div className="space-y-2 text-white/60">
+                  <div className="flex justify-between">
+                    <span>Room:</span>
+                    <span className="text-white font-semibold">{customerInfo.roomNumber}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Phone:</span>
+                    <span className="text-white font-semibold">{customerInfo.phoneNumber}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Type:</span>
+                    <span className="text-white font-semibold flex items-center gap-2">
+                      <Icon name={customerInfo.deliveryType === 'delivery' ? 'package' : 'location'} size={16} />
+                      {customerInfo.deliveryType === 'delivery' ? 'Delivery' : 'Pickup'}
+                    </span>
+                  </div>
                   {customerInfo.instructions && (
-                    <>
-                      <strong>Instructions:</strong> {customerInfo.instructions}<br/>
-                    </>
+                    <div className="flex justify-between pt-2 border-t border-white/10">
+                      <span>Instructions:</span>
+                      <span className="text-white font-semibold text-right max-w-[60%]">{customerInfo.instructions}</span>
+                    </div>
                   )}
-                  <strong>Total:</strong> {formatPrice(totalPrice)}
-                </p>
+                  <div className="flex justify-between pt-2 border-t border-white/10">
+                    <span>Total:</span>
+                    <span className="text-orange-500 font-bold text-xl">{formatPrice(totalPrice)}</span>
+                  </div>
+                </div>
               </div>
-              
-              <p className="text-gray-600 mb-6">
-                We'll prepare your order and contact you when it's ready for {customerInfo.deliveryType === 'delivery' ? 'delivery' : 'pickup'}!
+
+              <p className="text-white/60 mb-8">
+                It will be ready soon! We'll contact you when it's ready for {customerInfo.deliveryType === 'delivery' ? 'delivery' : 'pickup'}.
               </p>
-              
-              <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-lg mb-6">
-                <h4 className="font-semibold text-orange-800 mb-2">🚫 Need to Cancel?</h4>
-                <p className="text-sm text-orange-700">
-                  You can cancel your order anytime before we start cooking. Go to the <strong>"Track Order"</strong> page and enter your confirmation number: <strong>{orderNumber}</strong>
-                </p>
+
+              <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 mb-8 text-left">
+                <div className="flex items-start gap-3">
+                  <Icon name="warning" size={20} className="text-red-400 mt-1 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-red-400 mb-1">Need to Cancel?</h4>
+                    <p className="text-sm text-red-400/80">
+                      You can cancel your order anytime before we start cooking. Please call us with your confirmation number: <strong>{orderNumber}</strong>
+                    </p>
+                  </div>
+                </div>
               </div>
-              
+
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link 
+                <Link
                   href="/menu"
-                  className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors inline-flex items-center justify-center space-x-2"
+                  className="bg-orange-500 hover:bg-orange-600 border border-orange-400/30 text-white px-8 py-4 rounded-full font-bold transition-all shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2"
                 >
-                  <span>🍽️</span>
+                  <Icon name="menu" size={20} />
                   <span>Order More</span>
                 </Link>
-                <Link 
+                <Link
                   href="/"
-                  className="bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors inline-flex items-center justify-center space-x-2"
+                  className="bg-neutral-800/50 hover:bg-neutral-800 border border-white/10 text-white px-8 py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2"
                 >
-                  <span>🏠</span>
+                  <Icon name="home" size={20} />
                   <span>Home</span>
                 </Link>
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="container mx-auto px-4 py-4 sm:py-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800">📋 Checkout</h1>
-            <Link 
-              href="/cart"
-              className="bg-gray-600 text-white px-4 py-2.5 rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center space-x-2 w-full sm:w-auto min-h-[44px]"
-            >
-              <span>←</span>
-              <span>Back to Cart</span>
-            </Link>
-          </div>
+    <div className="min-h-screen bg-neutral-950">
+      {/* Hero Header */}
+      <div className="relative bg-neutral-950 border-b border-white/10">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-5" style={{
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgb(255 255 255) 1px, transparent 0)',
+          backgroundSize: '40px 40px'
+        }}></div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+        <div className="relative container mx-auto px-4 py-12">
+          <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+            <div>
+              <Link href="/cart" className="text-white/60 hover:text-white transition-colors flex items-center gap-2 mb-4">
+                <Icon name="arrow-left" size={20} />
+                <span>Back to Cart</span>
+              </Link>
+              <h1 className="text-5xl sm:text-6xl font-bold text-white font-display tracking-tight">
+                CHECKOUT
+              </h1>
+              <p className="text-white/60 mt-3">Complete your order details</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-16">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
             {/* Customer Information Form */}
-            <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-              <h2 className="text-2xl font-semibold text-gray-800 mb-6">👤 Customer Information</h2>
-              
-              <div className="space-y-4">
+            <div className="bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <Icon name="user" size={24} className="text-orange-500" />
+                <h2 className="text-2xl font-bold text-white">Customer Information</h2>
+              </div>
+
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-white/80 mb-2">
                     Full Name *
                   </label>
                   <input
@@ -314,13 +360,13 @@ export default function CheckoutPage() {
                     value={customerInfo.name}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     placeholder="e.g., Themba Ubisi"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-base min-h-[44px]"
+                    className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
                     required
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-white/80 mb-2">
                     Room Number *
                   </label>
                   <input
@@ -328,13 +374,13 @@ export default function CheckoutPage() {
                     value={customerInfo.roomNumber}
                     onChange={(e) => handleInputChange('roomNumber', e.target.value)}
                     placeholder="e.g., F09-7"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-base min-h-[44px]"
+                    className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
                     required
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-white/80 mb-2">
                     Phone Number *
                   </label>
                   <input
@@ -342,171 +388,213 @@ export default function CheckoutPage() {
                     value={customerInfo.phoneNumber}
                     onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
                     placeholder="e.g., 082 123 4567"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-base min-h-[44px]"
+                    className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
                     required
                   />
                 </div>
               </div>
 
               {/* Delivery Options */}
-              <div className="mt-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">🚚 Delivery Options</h3>
+              <div className="mt-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <Icon name="package" size={20} className="text-orange-500" />
+                  <h3 className="text-xl font-bold text-white">Delivery Options</h3>
+                </div>
                 <div className="space-y-4">
-                  <div className="flex items-center space-x-4">
+                  <label className="flex items-center gap-4 p-4 bg-neutral-800/30 border border-white/10 rounded-xl cursor-pointer hover:bg-neutral-800/50 transition-all">
                     <input
                       type="radio"
-                      id="pickup"
                       name="deliveryType"
                       value="pickup"
                       checked={customerInfo.deliveryType === 'pickup'}
                       onChange={(e) => handleInputChange('deliveryType', e.target.value as 'pickup' | 'delivery')}
-                      className="w-4 h-4 text-green-600 focus:ring-green-500"
+                      className="w-5 h-5 text-orange-500 focus:ring-orange-500/50 bg-neutral-800 border-white/20"
                     />
-                    <label htmlFor="pickup" className="flex items-center space-x-2 text-gray-700">
-                      <span>🏃‍♂️</span>
-                      <span>Pickup (Free)</span>
-                    </label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center gap-3 flex-1">
+                      <Icon name="location" size={20} className="text-white/60" />
+                      <div>
+                        <div className="text-white font-semibold">Pickup</div>
+                        <div className="text-white/60 text-sm">Free</div>
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-4 p-4 bg-neutral-800/30 border border-white/10 rounded-xl cursor-pointer hover:bg-neutral-800/50 transition-all">
                     <input
                       type="radio"
-                      id="delivery"
                       name="deliveryType"
                       value="delivery"
                       checked={customerInfo.deliveryType === 'delivery'}
                       onChange={(e) => handleInputChange('deliveryType', e.target.value as 'pickup' | 'delivery')}
-                      className="w-4 h-4 text-green-600 focus:ring-green-500"
+                      className="w-5 h-5 text-orange-500 focus:ring-orange-500/50 bg-neutral-800 border-white/20"
                     />
-                    <label htmlFor="delivery" className="flex items-center space-x-2 text-gray-700">
-                      <span>🚚</span>
-                      <span>Delivery (R10 delivery fee)</span>
-                    </label>
-                  </div>
+                    <div className="flex items-center gap-3 flex-1">
+                      <Icon name="package" size={20} className="text-white/60" />
+                      <div>
+                        <div className="text-white font-semibold">Delivery</div>
+                        <div className="text-white/60 text-sm">R10 delivery fee</div>
+                      </div>
+                    </div>
+                  </label>
                 </div>
 
                 {/* Delivery Address */}
                 {customerInfo.deliveryType === 'delivery' && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="mt-6">
+                    <label className="block text-sm font-semibold text-white/80 mb-2">
                       Delivery Address *
                     </label>
                     <textarea
                       value={customerInfo.deliveryAddress || ''}
                       onChange={(e) => handleInputChange('deliveryAddress', e.target.value)}
                       placeholder="e.g., Inyatsi Building, F09-7"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 h-24 resize-none text-base"
+                      className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 h-24 resize-none transition-all"
                       required={customerInfo.deliveryType === 'delivery'}
                     />
                   </div>
                 )}
 
                 {/* Order Instructions */}
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    📝 Special Instructions (Optional)
+                <div className="mt-6">
+                  <label className="block text-sm font-semibold text-white/80 mb-2 flex items-center gap-2">
+                    <Icon name="edit" size={16} />
+                    Special Instructions (Optional)
                   </label>
                   <textarea
                     value={customerInfo.instructions || ''}
                     onChange={(e) => handleInputChange('instructions', e.target.value)}
                     placeholder="How do you want your meat? (e.g., 'Normal', 'Mild', 'Hot', 'Extra hot', 'Call when ready')"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 h-24 resize-none text-base"
+                    className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 h-24 resize-none transition-all"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-white/40 mt-2">
                     We'll do our best to accommodate your requests!
                   </p>
                 </div>
               </div>
-              
-              <div className="mt-6 space-y-4">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-blue-800">
-                    💡 <strong>Note:</strong> This information will be saved for future orders to make checkout faster!
-                  </p>
+
+              <div className="mt-8 space-y-4">
+                <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <Icon name="notification" size={20} className="text-orange-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-orange-400/90">
+                      <strong>Note:</strong> This information will be saved for future orders to make checkout faster!
+                    </p>
+                  </div>
                 </div>
-                
-                <div className="p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg">
-                  <h4 className="font-semibold text-yellow-800 mb-2">🚫 Cancellation Policy</h4>
-                  <ul className="text-sm text-yellow-700 space-y-1">
-                    <li>• You can cancel your order before we start cooking</li>
-                    <li>• Use the "Track Order" page to cancel anytime</li>
-                    <li>• Once cooking starts, cancellation is not possible</li>
-                    <li>• We'll contact you if there are any issues</li>
-                  </ul>
+
+                <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <Icon name="warning" size={20} className="text-yellow-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-bold text-yellow-400 mb-2">Cancellation Policy</h4>
+                      <ul className="text-sm text-yellow-400/90 space-y-1.5">
+                        <li className="flex items-start gap-2">
+                          <span className="text-yellow-400">•</span>
+                          <span>You can cancel your order before we start cooking</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-yellow-400">•</span>
+                          <span>Call us to cancel anytime before cooking starts</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-yellow-400">•</span>
+                          <span>Once cooking starts, cancellation is not possible</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-yellow-400">•</span>
+                          <span>We'll contact you if there are any issues</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Order Summary */}
-            <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-              <h2 className="text-2xl font-semibold text-gray-800 mb-6">📋 Order Summary</h2>
-              
+            <div className="bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-8 lg:sticky lg:top-8">
+              <div className="flex items-center gap-3 mb-6">
+                <Icon name="orders" size={24} className="text-orange-500" />
+                <h2 className="text-2xl font-bold text-white">Order Summary</h2>
+              </div>
+
               <div className="space-y-4 mb-6">
                 {cartItems.map((item) => (
-                  <div key={item.id} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
+                  <div key={item.id} className="flex items-center gap-4 p-3 bg-neutral-800/30 border border-white/10 rounded-xl">
                     {item.image ? (
                       <img
                         src={item.image}
                         alt={item.name}
-                        className="w-12 h-12 object-cover rounded-lg"
+                        className="w-14 h-14 object-cover rounded-lg"
                         onError={(e) => {
                           e.currentTarget.style.display = 'none'
                         }}
                       />
                     ) : (
-                      <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex items-center justify-center">
-                        <span className="text-lg">🍽️</span>
+                      <div className="w-14 h-14 bg-neutral-800 rounded-lg flex items-center justify-center">
+                        <Icon name="menu" size={24} className="text-neutral-600" />
                       </div>
                     )}
-                    
-                    <div className="flex-1">
-                      <h3 className="font-medium text-gray-800">{item.name}</h3>
+
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-white truncate">{item.name}</h3>
                       {item.isCombo && item.selectedSide && (
-                        <p className="text-sm text-blue-600 font-medium">
-                          🍽️ Side: {item.selectedSide}
-                        </p>
+                        <div className="flex items-center gap-1 text-sm text-orange-400">
+                          <Icon name="check" size={14} />
+                          <span>Side: {item.selectedSide}</span>
+                        </div>
                       )}
-                      <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
+                      <p className="text-sm text-white/60">Qty: {item.quantity}</p>
                     </div>
-                    
+
                     <div className="text-right">
-                      <p className="font-semibold text-green-600">
+                      <p className="font-bold text-orange-500">
                         {formatPrice(parseFloat(item.price) * item.quantity)}
                       </p>
                     </div>
                   </div>
                 ))}
               </div>
-              
-              <div className="border-t pt-4 space-y-2">
-                <div className="flex justify-between items-center">
+
+              <div className="border-t border-white/10 pt-6 space-y-3">
+                <div className="flex justify-between items-center text-white/60">
                   <span>Subtotal:</span>
-                  <span>{formatPrice(subtotal)}</span>
+                  <span className="text-white font-semibold">{formatPrice(subtotal)}</span>
                 </div>
                 {deliveryFee > 0 && (
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center text-white/60">
                     <span>Delivery Fee:</span>
-                    <span>{formatPrice(deliveryFee)}</span>
+                    <span className="text-white font-semibold">{formatPrice(deliveryFee)}</span>
                   </div>
                 )}
-                <div className="flex justify-between items-center text-xl font-bold border-t pt-2">
-                  <span>Total:</span>
-                  <span className="text-green-600">{formatPrice(totalPrice)}</span>
+                <div className="flex justify-between items-center text-xl font-bold border-t border-white/10 pt-3">
+                  <span className="text-white">Total:</span>
+                  <span className="text-orange-500 text-2xl">{formatPrice(totalPrice)}</span>
                 </div>
               </div>
-              
+
               <Button
                 onClick={handleSubmitOrder}
                 disabled={!isFormValid}
                 variant="primary"
                 size="lg"
-                className="w-full mt-6"
+                className="w-full mt-6 bg-orange-500 hover:bg-orange-600 border border-orange-400/30 text-white font-bold rounded-full shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isFormValid ? '✅ Place Order' : '❌ Complete Form First'}
+                {isFormValid ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Icon name="check" size={20} />
+                    Place Order
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <Icon name="warning" size={20} />
+                    Complete Form First
+                  </span>
+                )}
               </Button>
-              
+
               {!isFormValid && (
-                <p className="text-sm text-red-600 mt-2 text-center">
+                <p className="text-sm text-red-400 mt-3 text-center">
                   Please fill in all required fields
                 </p>
               )}

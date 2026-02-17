@@ -1,12 +1,14 @@
 // Shared types and interfaces for the application
 
 export interface MenuItem {
-  'Items': string
-  'Price': string
-  'Available': string
-  'Image URL': string
-  'Description': string
-  'Category': string
+  id?: number
+  name: string
+  price: number
+  available: boolean
+  imageUrl: string
+  description: string
+  category: string
+  badge?: string
 }
 
 export interface BusinessStatus {

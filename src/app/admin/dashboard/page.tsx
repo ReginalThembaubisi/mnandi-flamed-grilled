@@ -6,10 +6,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAdminAuth } from '../../../hooks/useAdminAuth'
 import { setAdminPassword, verifyPasswordForChange, clearAdminSession, validateAdminSession, formatTimeRemaining } from '../../../lib/adminAuth'
-import { setBusinessStatus as updateBusinessStatus, getBusinessStatus, BusinessStatusData } from '../../../lib/businessStatus'
 import { AdminLayout } from '../../../components/admin/AdminLayout'
 import { useToastContext } from '@/components/providers/ToastProvider'
-import { sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone, safeJsonParse, safeJsonStringify } from '../../../lib/security'
+import { sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone, safeJsonParse, safeJsonStringify, decodeHtmlEntities } from '../../../lib/security'
+import { orderAPI } from '@/lib/javaAPI'
 
 interface CartItem {
   id: string
@@ -34,6 +34,7 @@ interface Order {
   total: number
   timestamp: string
   orderId: string
+  backendId?: number
   status?: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled'
 }
 
@@ -49,7 +50,6 @@ export default function AdminDashboard() {
   const [dailySales, setDailySales] = useState<DailySales[]>([])
   const [loading, setLoading] = useState(true)
   const [liveOrderCount, setLiveOrderCount] = useState(0)
-  const [businessStatus, setBusinessStatus] = useState<BusinessStatusData>({isOpen: true, timestamp: new Date().toISOString()})
   const [newOrderNotification, setNewOrderNotification] = useState<Order | null>(null)
   const [lastOrderCount, setLastOrderCount] = useState(0)
   const [lastOrderIds, setLastOrderIds] = useState<string[]>([])
@@ -73,38 +73,14 @@ export default function AdminDashboard() {
     }
 
     loadData()
-    loadBusinessStatus()
 
-    // Realtime updates from Supabase (if configured)
-    const supabase = getSupabase()
-    let channel: any = null
-    if (supabase) {
-      channel = supabase
-        .channel('orders-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-          loadData()
-        })
-        .subscribe()
-    }
-
-    // Initialize order tracking
-    const storedOrders = localStorage.getItem('orders')
-    if (storedOrders) {
-      const currentOrders = safeJsonParse<Order[]>(storedOrders, [])
-      setLastOrderCount(currentOrders.length)
-      setLastOrderIds(currentOrders.map(order => order.orderId))
-    }
-
-    // Set up real-time order monitoring
+    // Set up polling for new orders from Java backend
     const orderInterval = setInterval(() => {
       checkForNewOrders()
     }, 5000) // Check every 5 seconds
 
     return () => {
       clearInterval(orderInterval)
-      if (supabase && channel) {
-        supabase.removeChannel(channel)
-      }
     }
   }, [router, isAuthenticated, isChecking])
 
@@ -130,95 +106,91 @@ export default function AdminDashboard() {
     return () => clearInterval(interval)
   }, [isAuthenticated, session.isValid])
 
-  // Real-time order monitoring
-  const checkForNewOrders = () => {
-    const storedOrders = localStorage.getItem('orders')
-    if (storedOrders) {
-      const currentOrders = safeJsonParse<Order[]>(storedOrders, [])
+  // Real-time order monitoring from Java backend
+  const checkForNewOrders = async () => {
+    try {
+      const response = await orderAPI.getAll()
+      const currentOrders: Order[] = response.map(r => ({
+        customer: {
+          name: r.customerName,
+          roomNumber: r.customerRoom,
+          phoneNumber: r.customerPhone,
+          deliveryType: (r.customerResidence && r.customerResidence !== 'Pickup' ? 'delivery' : 'pickup') as 'pickup' | 'delivery',
+          deliveryAddress: r.customerResidence !== 'Pickup' ? r.customerResidence : undefined
+        },
+        items: safeJsonParse<CartItem[]>(r.items, []),
+        total: r.total,
+        timestamp: r.createdAt || new Date().toISOString(),
+        orderId: r.confirmationNumber || '',
+        backendId: r.id,
+        status: (r.status || 'pending') as Order['status']
+      }))
+
       const currentOrderIds = currentOrders.map(order => order.orderId)
-      
+
       // Check for truly new orders (not just count changes)
       const newOrderIds = currentOrderIds.filter(id => !lastOrderIds.includes(id))
-      
+
       if (newOrderIds.length > 0) {
         // Find the newest order that's not completed/cancelled
         const newActiveOrder = currentOrders
           .filter(order => newOrderIds.includes(order.orderId))
           .filter(order => order.status !== 'completed' && order.status !== 'cancelled')
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
-        
+
         if (newActiveOrder) {
           setNewOrderNotification(newActiveOrder)
-          
+
           // Auto-hide notification after 10 seconds
           setTimeout(() => {
             setNewOrderNotification(null)
           }, 10000)
         }
       }
-      
+
+      // Update orders list and tracking
+      setOrders(currentOrders)
+      calculateDailySales(currentOrders)
+      const activeOrders = currentOrders.filter(order => order.status !== 'completed' && order.status !== 'cancelled')
+      setLiveOrderCount(activeOrders.length)
       setLastOrderCount(currentOrders.length)
       setLastOrderIds(currentOrderIds)
+    } catch (e) {
+      // Silently fail on polling errors - loadData will handle initial load
+      console.debug('Polling check failed:', e)
     }
   }
 
-  // Load business status
-  const loadBusinessStatus = async () => {
-    const status = getBusinessStatus()
-    if (status) {
-      setBusinessStatus(status)
-    } else {
-      // Try to get from Supabase
-      const { getBusinessStatusFromSupabase } = await import('../../../lib/businessStatus')
-      const supabaseStatus = await getBusinessStatusFromSupabase()
-      if (supabaseStatus) {
-        setBusinessStatus(supabaseStatus)
-      }
-    }
-  }
 
-  // Toggle business status
-  const toggleBusinessStatus = async () => {
-    const newIsOpen = !businessStatus.isOpen
-    // Use updateBusinessStatus (aliased import) to save to localStorage/Supabase
-    await updateBusinessStatus(newIsOpen, businessStatus.message)
-    
-    // Update local state
-    const updatedStatus: BusinessStatusData = {
-      ...businessStatus,
-      isOpen: newIsOpen,
-      timestamp: new Date().toISOString()
-    }
-    setBusinessStatus(updatedStatus)
-  }
 
   // Update order status
-  const updateOrderStatus = (orderId: string, newStatus: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled') => {
-    const updatedOrders = orders.map(order => 
+  const updateOrderStatus = async (orderId: string, newStatus: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled') => {
+    // Optimistic UI update
+    const updatedOrders = orders.map(order =>
       order.orderId === orderId ? { ...order, status: newStatus } : order
     )
     setOrders(updatedOrders)
-    localStorage.setItem('orders', safeJsonStringify(updatedOrders))
 
-    // Persist to Supabase (if configured)
-    ;(async () => {
+    // Find the backend numeric ID for this order
+    const targetOrder = orders.find(o => o.orderId === orderId)
+    if (targetOrder?.backendId) {
       try {
-        const supabase = getSupabase()
-        if (supabase) {
-          await supabase.from('orders').update({ status: newStatus }).eq('order_id', orderId)
-        }
+        await orderAPI.updateStatus(targetOrder.backendId, newStatus)
       } catch (e) {
-        // no-op; local state already updated
+        console.error('Failed to update order status on backend:', e)
+        // Revert optimistic update on failure
+        setOrders(orders)
+        return
       }
-    })()
-    
+    }
+
     // Clear notification if this order was being shown and is now completed/cancelled
-    if ((newStatus === 'completed' || newStatus === 'cancelled') && 
-        newOrderNotification && 
-        newOrderNotification.orderId === orderId) {
+    if ((newStatus === 'completed' || newStatus === 'cancelled') &&
+      newOrderNotification &&
+      newOrderNotification.orderId === orderId) {
       setNewOrderNotification(null)
     }
-    
+
     // Send WhatsApp notification when order is ready
     if (newStatus === 'ready') {
       const order = updatedOrders.find(o => o.orderId === orderId)
@@ -235,9 +207,9 @@ export default function AdminDashboard() {
       if (!validation.valid) {
         throw new Error('Invalid phone number')
       }
-      
+
       let cleanNumber = validation.sanitized
-      
+
       // If number starts with 0, replace with 27 (South Africa)
       if (cleanNumber.startsWith('0')) {
         cleanNumber = '27' + cleanNumber.substring(1)
@@ -246,7 +218,7 @@ export default function AdminDashboard() {
       else if (!cleanNumber.startsWith('27')) {
         cleanNumber = '27' + cleanNumber
       }
-      
+
       // Final security check
       return sanitizePhoneForWhatsApp(cleanNumber)
     } catch (error) {
@@ -258,35 +230,35 @@ export default function AdminDashboard() {
   // Send WhatsApp notification
   const sendWhatsAppNotification = (order: Order) => {
     try {
-      const deliveryInfo = order.customer.deliveryType === 'delivery' 
-        ? `🚚 *Delivery Details:*
-• Address: ${sanitizeText(order.customer.deliveryAddress || '')}
-• Customer: ${sanitizeText(order.customer.name)}
+      const deliveryInfo = order.customer.deliveryType === 'delivery'
+        ? `DELIVERY DETAILS:
+- Address: ${sanitizeText(order.customer.deliveryAddress || '')}
+- Customer: ${sanitizeText(order.customer.name)}
 
-✅ Your order is ready for delivery! We'll be coming to deliver it soon.`
-        : `📍 *Pickup Details:*
-• Room: ${sanitizeText(order.customer.roomNumber)}
-• Customer: ${sanitizeText(order.customer.name)}
+Your order is ready for delivery! We'll be coming to deliver it soon.`
+        : `PICKUP DETAILS:
+- Room: ${sanitizeText(order.customer.roomNumber)}
+- Customer: ${sanitizeText(order.customer.name)}
 
-✅ Your order is ready for pickup! Please come and collect it.`
+Your order is ready for pickup! Please come and collect it.`
 
-      const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*
+      const message = `YOUR MNANDI FLAME-GRILLED ORDER IS READY!
 
-📋 *Order #${sanitizeText(order.orderId)}*
+ORDER #${sanitizeText(order.orderId)}
 
-📦 *Order Details:*
-${order.items.map(item => `• ${sanitizeText(item.name)} x${item.quantity}`).join('\n')}
+ORDER DETAILS:
+${order.items.map(item => `- ${sanitizeText(item.name)} x${item.quantity}`).join('\n')}
 
-💰 *Total: R${order.total.toFixed(2)}*
+TOTAL: R${order.total.toFixed(2)}
 
 ${deliveryInfo}
 
-🙏 Thank you for choosing Mnandi Flame-Grilled!`
-      
+Thank you for choosing Mnandi Flame-Grilled!`
+
       const phoneNumber = formatPhoneNumber(order.customer.phoneNumber)
-      const sanitizedMessage = sanitizeMessageForWhatsApp(message)
+      const sanitizedMessage = sanitizeMessageForWhatsApp(decodeHtmlEntities(message))
       const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(sanitizedMessage)}`
-      
+
       // Send WhatsApp notification
       window.open(whatsappUrl, '_blank')
     } catch (error) {
@@ -295,50 +267,44 @@ ${deliveryInfo}
     }
   }
 
-  const loadData = () => {
+  const loadData = async () => {
     try {
-      // Fetch from Supabase first (if configured)
-      ;(async () => {
-        const supabase = getSupabase()
-        if (supabase) {
-          const { data, error } = await supabase
-            .from('orders')
-            .select('*')
-            .order('timestamp', { ascending: false })
-          if (!error && data) {
-          const mapped: Order[] = data.map((r: any) => ({
-            customer: r.customer,
-            items: r.items,
-            total: Number(r.total) || 0,
-            timestamp: r.timestamp,
-            orderId: r.order_id,
-            status: r.status || 'pending'
-          }))
-          setOrders(mapped)
-          calculateDailySales(mapped)
-          const active = mapped.filter(o => o.status !== 'completed' && o.status !== 'cancelled')
-          setLiveOrderCount(active.length)
-          setLoading(false)
-          return
-          }
-        }
-        // Fallback to localStorage
-        const savedOrders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
-        const ordersWithStatus: Order[] = savedOrders.map((order: Order) => ({
-          ...order,
-          status: order.status || 'pending'
-        }))
-        setOrders(ordersWithStatus)
-        calculateDailySales(ordersWithStatus)
-        const activeOrders = ordersWithStatus.filter(order => order.status !== 'completed' && order.status !== 'cancelled')
-        setLiveOrderCount(activeOrders.length)
-        setLoading(false)
-      })()
-      
+      // Fetch from Java Spring Boot backend
+      const response = await orderAPI.getAll()
+      const mapped: Order[] = response.map(r => ({
+        customer: {
+          name: r.customerName,
+          roomNumber: r.customerRoom,
+          phoneNumber: r.customerPhone,
+          deliveryType: (r.customerResidence && r.customerResidence !== 'Pickup' ? 'delivery' : 'pickup') as 'pickup' | 'delivery',
+          deliveryAddress: r.customerResidence !== 'Pickup' ? r.customerResidence : undefined
+        },
+        items: safeJsonParse<CartItem[]>(r.items, []),
+        total: r.total,
+        timestamp: r.createdAt || new Date().toISOString(),
+        orderId: r.confirmationNumber || '',
+        backendId: r.id,
+        status: (r.status || 'pending') as Order['status']
+      }))
+      setOrders(mapped)
+      calculateDailySales(mapped)
+      const active = mapped.filter(o => o.status !== 'completed' && o.status !== 'cancelled')
+      setLiveOrderCount(active.length)
+      setLastOrderIds(mapped.map(o => o.orderId))
+      setLoading(false)
     } catch (err) {
-      console.error('Error loading data:', err)
-    } finally {
-      // setLoading handled above
+      console.error('Error loading data from Java backend:', err)
+      // Fallback to localStorage
+      const savedOrders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
+      const ordersWithStatus: Order[] = savedOrders.map((order: Order) => ({
+        ...order,
+        status: order.status || 'pending'
+      }))
+      setOrders(ordersWithStatus)
+      calculateDailySales(ordersWithStatus)
+      const activeOrders = ordersWithStatus.filter(order => order.status !== 'completed' && order.status !== 'cancelled')
+      setLiveOrderCount(activeOrders.length)
+      setLoading(false)
     }
   }
 
@@ -347,7 +313,7 @@ ${deliveryInfo}
 
     ordersData.forEach(order => {
       const date = new Date(order.timestamp).toISOString().split('T')[0]
-      
+
       if (!salesMap[date]) {
         salesMap[date] = {
           date,
@@ -369,10 +335,10 @@ ${deliveryInfo}
       })
     })
 
-    const dailySalesArray = Object.values(salesMap).sort((a, b) => 
+    const dailySalesArray = Object.values(salesMap).sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     )
-    
+
     setDailySales(dailySalesArray)
   }
 
@@ -402,7 +368,7 @@ ${deliveryInfo}
     const today = new Date()
     const weekStart = new Date(today)
     weekStart.setDate(today.getDate() - today.getDay()) // Start of current week (Sunday)
-    
+
     const lastWeekStart = new Date(weekStart)
     lastWeekStart.setDate(weekStart.getDate() - 7)
     const lastWeekEnd = new Date(weekStart)
@@ -438,7 +404,7 @@ ${deliveryInfo}
     orders.forEach(order => {
       const phone = order.customer.phoneNumber
       const orderDate = new Date(order.timestamp)
-      
+
       if (!customerMap.has(phone)) {
         customerMap.set(phone, {
           firstOrder: orderDate,
@@ -447,7 +413,7 @@ ${deliveryInfo}
           lastOrder: orderDate
         })
       }
-      
+
       const customer = customerMap.get(phone)
       customer.orderCount += 1
       customer.totalSpent += order.total
@@ -473,7 +439,7 @@ ${deliveryInfo}
     const today = new Date()
     const thirtyDaysAgo = new Date(today)
     thirtyDaysAgo.setDate(today.getDate() - 30)
-    
+
     const monthlyOrders = orders.filter(order => {
       const orderDate = new Date(order.timestamp)
       return orderDate >= thirtyDaysAgo
@@ -490,15 +456,15 @@ ${deliveryInfo}
       weekStart.setDate(thirtyDaysAgo.getDate() + (i * 7))
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekStart.getDate() + 6)
-      
+
       const weekOrders = monthlyOrders.filter(order => {
         const orderDate = new Date(order.timestamp)
         return orderDate >= weekStart && orderDate <= weekEnd
       })
-      
+
       const weekRevenue = weekOrders.reduce((sum, order) => sum + order.total, 0)
       const weekOrderCount = weekOrders.length
-      
+
       weeklyData.push({
         week: i + 1,
         revenue: weekRevenue,
@@ -515,51 +481,61 @@ ${deliveryInfo}
     }
   }
 
-  const clearAllData = () => {
+  const clearAllData = async () => {
     if (confirm('⚠️ WARNING: This will delete ALL data including orders, customers, and cart items. This cannot be undone!\n\nAre you sure you want to continue?')) {
-      // Clear all localStorage data
-      localStorage.removeItem('orders')
-      localStorage.removeItem('cart')
-      localStorage.removeItem('customerInfo')
-      localStorage.removeItem('customers')
-      localStorage.removeItem('specials')
-      
-      // Reload the page to refresh all data
-      window.location.reload()
+      try {
+        setLoading(true)
+        // Clear backend data
+        await orderAPI.deleteAll()
+
+        // Clear all localStorage data
+        localStorage.removeItem('orders')
+        localStorage.removeItem('cart')
+        localStorage.removeItem('customerInfo')
+        localStorage.removeItem('customers')
+        localStorage.removeItem('specials')
+
+        // Reload the page to refresh all data
+        window.location.reload()
+      } catch (e) {
+        console.error('Failed to clear data:', e)
+        alert('Failed to clear backend data. Please check connection.')
+        setLoading(false)
+      }
     }
   }
 
   const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault()
     setPasswordError('')
-    
+
     // Verify current password
     if (!verifyPasswordForChange(currentPassword)) {
       setPasswordError('Current password is incorrect')
       return
     }
-    
+
     // Validate new password
     if (newPassword !== confirmPassword) {
       setPasswordError('New passwords do not match')
       return
     }
-    
+
     if (newPassword.length < 6) {
       setPasswordError('New password must be at least 6 characters long')
       return
     }
-    
+
     // Update password (stores hashed version)
     setAdminPassword(newPassword)
-    
+
     // Reset form
     setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')
     setShowChangePassword(false)
     setPasswordError('')
-    
+
     toast.success('Password updated successfully!')
   }
 
@@ -664,44 +640,7 @@ ${deliveryInfo}
           </div>
         )}
 
-        {/* Business Status Control */}
-        <div className="mb-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white text-xl">
-                🏪
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Business Status</h2>
-                <p className="text-sm text-gray-500">Control when customers can place orders</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className={`px-4 py-2 rounded-lg font-semibold text-sm ${
-                businessStatus.isOpen 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-red-100 text-red-800'
-              }`}>
-                {businessStatus.isOpen ? '🟢 OPEN' : '🔴 CLOSED'}
-              </div>
-              <button
-                onClick={toggleBusinessStatus}
-                className={`px-6 py-2.5 rounded-lg font-semibold transition-all text-sm ${
-                  businessStatus.isOpen 
-                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-sm' 
-                    : 'bg-green-600 hover:bg-green-700 text-white shadow-sm'
-                }`}
-              >
-                {businessStatus.isOpen ? 'Close Business' : 'Open Business'}
-              </button>
-            </div>
-          </div>
-          {businessStatus.message && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-800 text-sm">{businessStatus.message}</p>
-            </div>
-          )}
-        </div>
+
 
         {/* Change Password Modal */}
         {showChangePassword && (
@@ -734,7 +673,7 @@ ${deliveryInfo}
                   required
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   New Password
@@ -749,7 +688,7 @@ ${deliveryInfo}
                   minLength={6}
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Confirm New Password
@@ -764,13 +703,13 @@ ${deliveryInfo}
                   minLength={6}
                 />
               </div>
-              
+
               {passwordError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                   <p className="text-red-600 text-sm">{passwordError}</p>
                 </div>
               )}
-              
+
               <div className="flex space-x-3 pt-2">
                 <button
                   type="submit"
@@ -943,7 +882,7 @@ ${deliveryInfo}
               </div>
             </div>
           </div>
-          
+
           {/* Weekly Trend Chart */}
           <div className="mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">📈 Weekly Trend (Last 4 Weeks)</h3>
@@ -957,7 +896,7 @@ ${deliveryInfo}
                       {week.label}
                     </div>
                     <div className="flex-1 bg-gray-200 rounded-full h-8 relative">
-                      <div 
+                      <div
                         className="bg-gradient-to-r from-green-400 to-green-500 h-8 rounded-full flex items-center justify-end pr-3"
                         style={{ width: `${barWidth}%` }}
                       >
@@ -1040,7 +979,7 @@ ${deliveryInfo}
                     {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}
                   </div>
                   <div className="flex-1 bg-gray-200 rounded-full h-5 sm:h-6 relative min-w-0">
-                    <div 
+                    <div
                       className="bg-gradient-to-r from-green-400 to-green-500 h-5 sm:h-6 rounded-full flex items-center justify-end pr-1 sm:pr-2"
                       style={{ width: `${barWidth}%` }}
                     >
@@ -1105,18 +1044,17 @@ ${deliveryInfo}
                       <h3 className="font-semibold text-gray-800 text-sm sm:text-base">
                         Order #{order.orderId.slice(-6)}
                       </h3>
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                         order.status === 'preparing' ? 'bg-blue-100 text-blue-800' :
-                        order.status === 'ready' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
+                          order.status === 'ready' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                        }`}>
                         {order.status?.toUpperCase() || 'PENDING'}
                       </span>
                     </div>
                     <span className="text-green-600 font-bold text-lg sm:text-xl">R{order.total.toFixed(2)}</span>
                   </div>
-                  
+
                   <div className="text-xs sm:text-sm text-gray-600 mb-3 space-y-1">
                     <p><strong>Customer:</strong> {order.customer.name}</p>
                     <p><strong>Phone:</strong> {order.customer.phoneNumber}</p>
@@ -1143,26 +1081,24 @@ ${deliveryInfo}
                       <span>📞</span>
                       <span>Call Customer</span>
                     </button>
-                    
+
                     <button
                       onClick={() => updateOrderStatus(order.orderId, 'ready')}
-                      className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center space-x-2 min-h-[44px] ${
-                        order.status === 'ready' 
-                          ? 'bg-green-600 text-white' 
-                          : 'bg-green-100 text-green-800 hover:bg-green-200'
-                      }`}
+                      className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center space-x-2 min-h-[44px] ${order.status === 'ready'
+                        ? 'bg-green-600 text-white'
+                        : 'bg-green-100 text-green-800 hover:bg-green-200'
+                        }`}
                     >
                       <span>✅</span>
                       <span>Mark Ready</span>
                     </button>
-                    
+
                     <button
                       onClick={() => updateOrderStatus(order.orderId, 'completed')}
-                      className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center space-x-2 min-h-[44px] ${
-                        order.status === 'completed' 
-                          ? 'bg-gray-600 text-white' 
-                          : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                      }`}
+                      className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center space-x-2 min-h-[44px] ${order.status === 'completed'
+                        ? 'bg-gray-600 text-white'
+                        : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                        }`}
                     >
                       <span>✔️</span>
                       <span>Complete</span>

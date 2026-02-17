@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu - Mnandi Flamed Grilled</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="container">
+            <div class="logo">🔥 Mnandi</div>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="menu.html">Menu</a></li>
+                <li><a href="track.html">Track Order</a></li>
+                <li><a href="admin.html">Admin</a></li>
+                <li class="cart-icon">
+                    <a href="cart.html">🛒 Cart</a>
+                    <span class="cart-count" style="display: none;">0</span>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <div class="container">
+        <div style="text-align: center; padding: 3rem 0 2rem; color: white;">
+            <h1 style="font-size: 3rem; margin-bottom: 0.5rem;">Our Menu</h1>
+            <p style="font-size: 1.2rem;">Flame-grilled perfection, delivered fresh</p>
+        </div>
+    </div>
+
+    <!-- Filter Options -->
+    <div class="container">
+        <div class="card" style="text-align: center; margin-bottom: 2rem;">
+            <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="filterMenu('all')">All Items</button>
+                <button class="btn btn-secondary" onclick="filterMenu('Main Items')">Main Items</button>
+                <button class="btn btn-secondary" onclick="filterMenu('Sides')">Sides</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu Items -->
+    <div class="container">
+        <div id="menu-items">
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Mnandi Flamed Grilled. All rights reserved.</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script>
+        let allMenuItems = [];
+        let currentFilter = 'all';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            cart.updateCartCount();
+            loadMenu();
+        });
+
+        async function loadMenu() {
+            const container = document.getElementById('menu-items');
+            utils.showLoading(container);
+
+            try {
+                allMenuItems = await api.getMenu();
+                displayMenu(allMenuItems);
+            } catch (error) {
+                utils.showError(container, 'Failed to load menu. Please try again later.');
+            }
+        }
+
+        function filterMenu(category) {
+            // Update  button styles
+            const buttons = document.querySelectorAll('.card button');
+            buttons.forEach(btn => {
+                btn.className = 'btn btn-secondary';
+            });
+            event.target.className = 'btn btn-primary';
+
+            currentFilter = category;
+
+            if (category === 'all') {
+                displayMenu(allMenuItems);
+            } else {
+                const filtered = allMenuItems.filter(item => item.category === category);
+                displayMenu(filtered);
+            }
+        }
+
+        function displayMenu(items) {
+            const container = document.getElementById('menu-items');
+
+            if (items.length === 0) {
+                container.innerHTML = `
+                    <div class="card">
+                        <p style="text-align: center;">No items found in this category.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Separate available and unavailable items
+            const availableItems = items.filter(item => item.available);
+            const unavailableItems = items.filter(item => !item.available);
+
+            container.innerHTML = `
+                ${availableItems.length > 0 ? `
+                    <div class="card-grid">
+                        ${availableItems.map(item => createMenuCard(item, true)).join('')}
+                    </div>
+                ` : ''}
+                
+                ${unavailableItems.length > 0 ? `
+                    <h3 style="color: white; margin-top: 3rem; margin-bottom: 1rem;">Currently Unavailable</h3>
+                    <div class="card-grid" style="opacity: 0.6;">
+                        ${unavailableItems.map(item => createMenuCard(item, false)).join('')}
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        function createMenuCard(item, isAvailable) {
+            const imageUrl = item.imageUrl || 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=400';
+
+            return `
+                <div class="card">
+                    <img src="${imageUrl}" 
+                         alt="${item.name}"
+                         onerror="this.src='https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=400'">
+                    <h3>${item.name}</h3>
+                    <p>${item.description || 'Delicious flame-grilled goodness'}</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+                        <div class="price">${utils.formatCurrency(item.price)}</div>
+                        <span class="badge ${item.category === 'Sides' ? 'badge-pending' : 'badge-success'}">
+                            ${item.category || 'Main'}
+                        </span>
+                    </div>
+                    ${isAvailable ? `
+                        <button class="btn btn-primary" style="width: 100%; margin-top: 1rem;" 
+                                onclick="addToCart('${item.name}', ${item.price}, '${imageUrl}', '${item.description || ''}')">
+                            Add to Cart
+                        </button>
+                    ` : `
+                        <button class="btn" style="width: 100%; margin-top: 1rem; background: #ccc; cursor: not-allowed;" disabled>
+                            Out of Stock
+                        </button>
+                    `}
+                </div>
+            `;
+        }
+
+        function addToCart(name, price, imageUrl, description) {
+            cart.add({
+                name,
+                price,
+                imageUrl,
+                description
+            });
+
+            // Show success notification
+            showNotification(`${name} added to cart!`, 'success');
+        }
+
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type}`;
+            notification.style.position = 'fixed';
+            notification.style.top = '100px';
+            notification.style.right = '20px';
+            notification.style.zIndex = '9999';
+            notification.style.minWidth = '250px';
+            notification.style.animation = 'fadeIn 0.3s';
+            notification.innerHTML = message;
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'fadeOut 0.3s';
+                setTimeout(() => notification.remove(), 300);
+            }, 2000);
+        }
+    </script>
+
+    <style>
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+                transform: translateX(0);
+            }
+
+            to {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+        }
+    </style>
+</body>
+
+</html>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { verifyAdminCredentials, createAdminSession, validateAdminSession } from '../../../lib/adminAuth'
+import { verifyAdminCredentialsAsync, createAdminSession, validateAdminSession } from '../../../lib/adminAuth'
 import { checkLoginRateLimit, recordFailedLoginAttempt, clearLoginAttempts } from '../../../lib/security'
 
 export default function AdminLogin() {
@@ -41,19 +41,21 @@ export default function AdminLogin() {
     const sanitizedPassword = password
 
     // Verify credentials
-    if (verifyAdminCredentials(sanitizedUsername, sanitizedPassword)) {
+    const isAuthenticated = await verifyAdminCredentialsAsync(sanitizedUsername, sanitizedPassword)
+
+    if (isAuthenticated) {
       // Clear failed login attempts on success
       clearLoginAttempts()
-      
+
       // Create session
       createAdminSession()
-      
+
       // Redirect to admin dashboard
       router.push('/admin/dashboard')
     } else {
       // Record failed attempt
       recordFailedLoginAttempt()
-      
+
       const newRateLimit = checkLoginRateLimit()
       if (newRateLimit.remainingAttempts !== undefined) {
         setError(`Invalid username or password. ${newRateLimit.remainingAttempts} attempt(s) remaining.`)
@@ -143,7 +145,7 @@ export default function AdminLogin() {
           </form>
 
           <div className="mt-6 text-center">
-            <a 
+            <a
               href="/"
               className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors inline-flex items-center"
             >

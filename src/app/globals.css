@@ -6,18 +6,71 @@
 
 @layer base {
   body {
-    @apply bg-gradient-to-br from-orange-50/50 to-red-50/30;
+    @apply bg-gradient-to-br from-orange-50/50 via-white to-red-50/30;
+    @apply text-gray-900;
+  }
+
+  * {
+    @apply transition-colors duration-200;
   }
 }
 
+/* Advanced Animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
+  }
+
+  50% {
+    box-shadow: 0 0 40px rgba(255, 107, 53, 0.6);
   }
 }
 
@@ -25,19 +78,145 @@
   animation: fadeIn 0.3s ease-out;
 }
 
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(to right,
+      #f6f7f8 0%,
+      #edeef1 20%,
+      #f6f7f8 40%,
+      #f6f7f8 100%);
+  background-size: 1000px 100%;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Glassmorphism Utilities */
+@layer components {
+  .glass {
+    @apply bg-white/80 backdrop-blur-md;
+    @apply border border-white/20;
+    @apply shadow-lg shadow-gray-200/50;
+  }
+
+  .glass-dark {
+    @apply bg-gray-900/80 backdrop-blur-md;
+    @apply border border-white/10;
+    @apply shadow-lg shadow-black/20;
+  }
+
+  .card-elevated {
+    @apply bg-white rounded-2xl shadow-xl;
+    @apply hover:shadow-2xl hover:-translate-y-1;
+    @apply transition-all duration-300;
+  }
+
+  .card-menu {
+    @apply bg-white rounded-2xl overflow-hidden;
+    @apply shadow-lg hover:shadow-2xl;
+    @apply transform transition-all duration-300;
+    @apply hover:-translate-y-2 hover:scale-[1.02];
+  }
+
+  .btn-primary {
+    @apply bg-gradient-to-r from-orange-500 to-red-500;
+    @apply text-white font-semibold;
+    @apply px-6 py-3 rounded-lg;
+    @apply shadow-lg shadow-orange-500/30;
+    @apply hover:shadow-xl hover:shadow-orange-500/50;
+    @apply hover:scale-105;
+    @apply transition-all duration-300;
+    @apply active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-orange-600 font-semibold;
+    @apply px-6 py-3 rounded-lg;
+    @apply border-2 border-orange-500;
+    @apply hover:bg-orange-50;
+    @apply transition-all duration-300;
+  }
+
+  .badge-new {
+    @apply absolute top-2 right-2;
+    @apply bg-gradient-to-r from-green-400 to-emerald-500;
+    @apply text-white text-xs font-bold;
+    @apply px-3 py-1 rounded-full;
+    @apply shadow-lg;
+  }
+
+  .badge-spicy {
+    @apply absolute top-2 left-2;
+    @apply bg-gradient-to-r from-red-500 to-orange-500;
+    @apply text-white text-xs font-bold;
+    @apply px-3 py-1 rounded-full;
+    @apply shadow-lg;
+  }
+
+  .badge-popular {
+    @apply absolute top-2 right-2;
+    @apply bg-gradient-to-r from-yellow-400 to-orange-400;
+    @apply text-white text-xs font-bold;
+    @apply px-3 py-1 rounded-full;
+    @apply shadow-lg;
+  }
+
+  .image-hover-zoom {
+    @apply overflow-hidden;
+  }
+
+  .image-hover-zoom img {
+    @apply transition-transform duration-500;
+  }
+
+  .image-hover-zoom:hover img {
+    @apply scale-110;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-orange-600 to-red-600;
+    @apply bg-clip-text text-transparent;
+  }
+
+  .skeleton {
+    @apply animate-shimmer bg-gray-200 rounded;
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  @apply bg-gray-100 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-orange-300 rounded-full;
+  @apply bg-gradient-to-b from-orange-400 to-red-400 rounded-full;
+  @apply hover:from-orange-500 hover:to-red-500;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-orange-400;
+/* Focus states for accessibility */
+*:focus-visible {
+  @apply outline-none ring-2 ring-orange-500 ring-offset-2;
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Selection color */
+::selection {
+  @apply bg-orange-200 text-orange-900;
 }

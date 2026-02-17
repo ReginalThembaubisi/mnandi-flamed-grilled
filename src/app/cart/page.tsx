@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { CartItem } from '@/types'
 import { Button } from '@/components/ui/Button'
+import { Icon } from '@/components/ui/IconMap'
 import { formatPrice, calculateCartTotal } from '@/lib/utils'
 import { CartItemSkeleton } from '@/components/ui/LoadingSkeleton'
 import { safeJsonParse, safeJsonStringify } from '@/lib/security'
+import { motion } from 'framer-motion'
 
 export default function CartPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -43,14 +45,14 @@ export default function CartPage() {
         removeFromCart(itemId)
         return
       }
-      
+
       // Validate quantity (prevent DoS with extremely large numbers)
       if (newQuantity > 100) {
         alert('Maximum quantity is 100 per item')
         return
       }
-      
-      const updatedCart = cartItems.map(item => 
+
+      const updatedCart = cartItems.map(item =>
         item.id === itemId ? { ...item, quantity: newQuantity } : item
       )
       setCartItems(updatedCart)
@@ -69,9 +71,9 @@ export default function CartPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-        <div className="container mx-auto px-4 py-8">
-          <div className="space-y-4">
+      <div className="min-h-screen bg-neutral-950">
+        <div className="container mx-auto px-4 py-16">
+          <div className="space-y-6">
             {[...Array(3)].map((_, i) => (
               <CartItemSkeleton key={i} />
             ))}
@@ -82,178 +84,205 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="container mx-auto px-4 py-4 sm:py-8">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 sm:mb-8 gap-4">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">🛒 Your Cart</h1>
-          <Link 
-            href="/menu"
-            className="bg-green-600 text-white px-4 py-2.5 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 w-full sm:w-auto min-h-[44px]"
-          >
-            <span>🍽️</span>
-            <span>Back to Menu</span>
-          </Link>
-        </div>
+    <div className="min-h-screen bg-neutral-950">
+      {/* Hero Header */}
+      <div className="relative bg-neutral-950 border-b border-white/10">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-5" style={{
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgb(255 255 255) 1px, transparent 0)',
+          backgroundSize: '40px 40px'
+        }}></div>
 
+        <div className="relative container mx-auto px-4 py-12">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+            <div>
+              <Link href="/menu" className="text-white/60 hover:text-white transition-colors flex items-center gap-2 mb-4">
+                <Icon name="arrow-left" size={20} />
+                <span>Back to Menu</span>
+              </Link>
+              <h1 className="text-5xl sm:text-6xl font-bold text-white font-display tracking-tight">
+                YOUR CART
+              </h1>
+              <p className="text-white/60 mt-3">Review your order before checkout</p>
+            </div>
+            {cartItems.length > 0 && (
+              <div className="bg-orange-500/10 border border-orange-500/30 px-6 py-4 rounded-2xl backdrop-blur-sm">
+                <div className="text-white/60 text-sm mb-1">Total Items</div>
+                <div className="text-3xl font-bold text-orange-500">
+                  {cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0)}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="container mx-auto px-4 py-16">
         {cartItems.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">🛒</div>
-            <h2 className="text-2xl font-semibold text-gray-800 mb-2">Your cart is empty</h2>
-            <p className="text-gray-600 mb-6">Add some delicious items from our menu!</p>
-            <Link 
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-md mx-auto text-center bg-neutral-900/50 backdrop-blur-sm border border-white/10 p-12 rounded-2xl shadow-2xl"
+          >
+            <Icon name="cart" size={80} className="mx-auto mb-6 text-white/20" />
+            <h2 className="text-3xl font-bold text-white mb-4">Your cart is empty</h2>
+            <p className="text-white/60 mb-8 text-lg">Add some delicious items from our menu!</p>
+            <Link
               href="/menu"
-              className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors"
+              className="inline-block bg-orange-500 hover:bg-orange-600 border border-orange-400/30 text-white px-8 py-4 rounded-full font-bold transition-all shadow-lg shadow-orange-500/20"
             >
               Browse Menu
             </Link>
-          </div>
+          </motion.div>
         ) : (
-          <>
-            <div className="grid gap-4 mb-6 sm:mb-8">
-              {cartItems.map((item) => (
-                <div key={item.id} className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-                  <div className="flex flex-col sm:flex-row gap-4">
+          <div className="grid lg:grid-cols-3 gap-8">
+            {/* Cart Items */}
+            <div className="lg:col-span-2 space-y-6">
+              {cartItems.map((item, index) => (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl p-6 hover:border-orange-500/30 transition-all duration-300"
+                >
+                  <div className="flex flex-col sm:flex-row gap-6">
                     {/* Image */}
                     <div className="flex-shrink-0">
                       {item.image ? (
                         <img
                           src={item.image}
                           alt={item.name}
-                          className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg mx-auto sm:mx-0"
+                          className="w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-xl mx-auto sm:mx-0"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none'
                           }}
                         />
                       ) : (
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex items-center justify-center mx-auto sm:mx-0">
-                          <span className="text-2xl">🍽️</span>
+                        <div className="w-24 h-24 sm:w-28 sm:h-28 bg-neutral-800 rounded-xl flex items-center justify-center mx-auto sm:mx-0">
+                          <Icon name="menu" size={40} className="text-neutral-600" />
                         </div>
                       )}
                     </div>
-                    
+
                     {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">{item.name}</h3>
+                      <h3 className="text-xl font-bold text-white mb-2">{item.name}</h3>
                       {item.description && (
-                        <p className="text-gray-600 text-sm mb-2 line-clamp-2">{item.description}</p>
+                        <p className="text-white/60 text-sm mb-3 line-clamp-2">{item.description}</p>
                       )}
                       {item.isCombo && item.selectedSide && (
-                        <p className="text-blue-600 text-sm font-medium mb-1">
-                          🍽️ Side: {item.selectedSide}
-                        </p>
+                        <div className="flex items-center gap-2 text-sm text-orange-400 mb-2">
+                          <Icon name="check" size={16} />
+                          <span>Side: {item.selectedSide}</span>
+                        </div>
                       )}
                       {item.extraSidesCost && item.extraSidesCost > 0 && (
-                        <p className="text-orange-600 text-sm font-medium mb-1">
-                          💰 Extra sides: +R{item.extraSidesCost.toFixed(2)}
-                        </p>
+                        <div className="flex items-center gap-2 text-sm text-orange-400 mb-2">
+                          <Icon name="add" size={16} />
+                          <span>Extra sides: +{formatPrice(item.extraSidesCost)}</span>
+                        </div>
                       )}
-                      <p className="text-green-600 font-medium text-sm sm:text-base mb-4">
+                      <div className="text-orange-500 font-bold text-lg mb-4">
                         {formatPrice(item.price)} each
                         {item.basePrice && item.extraSidesCost && item.extraSidesCost > 0 && (
-                          <span className="text-gray-500 text-xs ml-2 block sm:inline">
+                          <span className="text-white/40 text-sm ml-2">
                             ({formatPrice(item.basePrice)} + {formatPrice(item.extraSidesCost)})
                           </span>
                         )}
-                      </p>
-                      
-                      {/* Mobile: Quantity and Price */}
-                      <div className="flex items-center justify-between sm:hidden">
-                        <div className="flex items-center space-x-3">
+                      </div>
+
+                      {/* Controls */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 bg-neutral-800/50 backdrop-blur-sm border border-white/10 rounded-full px-2 py-1">
                           <button
                             onClick={() => updateQuantity(item.id, (item.quantity || 1) - 1)}
-                            className="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-800 min-h-[44px] min-w-[44px]"
+                            className="w-10 h-10 hover:bg-white/10 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"
                             aria-label="Decrease quantity"
                           >
-                            −
+                            <Icon name="remove" size={20} />
                           </button>
-                          <span className="w-8 text-center font-medium text-lg">{item.quantity || 1}</span>
+                          <span className="w-12 text-center font-bold text-white text-lg">{item.quantity || 1}</span>
                           <button
                             onClick={() => updateQuantity(item.id, (item.quantity || 1) + 1)}
-                            className="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-800 min-h-[44px] min-w-[44px]"
+                            className="w-10 h-10 hover:bg-white/10 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"
                             aria-label="Increase quantity"
                           >
-                            +
+                            <Icon name="add" size={20} />
                           </button>
                         </div>
+
                         <div className="text-right">
-                          <div className="text-xl font-bold text-green-600">
+                          <div className="text-2xl font-bold text-orange-500 mb-1">
                             {formatPrice(parseFloat(item.price) * (item.quantity || 1))}
                           </div>
+                          <button
+                            onClick={() => removeFromCart(item.id)}
+                            className="text-red-400 hover:text-red-300 font-medium text-sm flex items-center gap-1"
+                            aria-label="Remove item from cart"
+                          >
+                            <Icon name="delete" size={16} />
+                            <span>Remove</span>
+                          </button>
                         </div>
-                      </div>
-                    </div>
-                    
-                    {/* Desktop: Quantity and Price */}
-                    <div className="hidden sm:flex items-center space-x-4">
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => updateQuantity(item.id, (item.quantity || 1) - 1)}
-                          className="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-800 min-h-[44px] min-w-[44px]"
-                          aria-label="Decrease quantity"
-                        >
-                          −
-                        </button>
-                        <span className="w-8 text-center font-medium">{item.quantity || 1}</span>
-                        <button
-                          onClick={() => updateQuantity(item.id, (item.quantity || 1) + 1)}
-                          className="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-800 min-h-[44px] min-w-[44px]"
-                          aria-label="Increase quantity"
-                        >
-                          +
-                        </button>
-                      </div>
-                      
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-green-600">
-                          {formatPrice(parseFloat(item.price) * (item.quantity || 1))}
-                        </div>
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="text-red-600 hover:text-red-700 font-medium text-sm mt-1 min-h-[44px] px-2"
-                          aria-label="Remove item from cart"
-                        >
-                          Remove
-                        </button>
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-4 sm:mb-6">
-                <span className="text-xl sm:text-2xl font-bold text-gray-800">Total:</span>
-                <span className="text-2xl sm:text-3xl font-bold text-green-600">{formatPrice(totalPrice)}</span>
-              </div>
-              
-              <div className="space-y-3">
-                <Link 
-                  href="/checkout"
-                  className="w-full bg-green-600 text-white py-3.5 rounded-lg hover:bg-green-700 transition-colors text-center font-medium text-base sm:text-lg flex items-center justify-center space-x-2 min-h-[44px]"
-                >
-                  <span>💳</span>
-                  <span>Proceed to Checkout</span>
-                </Link>
-                
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    onClick={clearCart}
-                    variant="danger"
-                    className="flex-1 min-h-[44px]"
+            {/* Order Summary */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-8 bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl p-8">
+                <h2 className="text-2xl font-bold text-white mb-6">Order Summary</h2>
+
+                <div className="border-t border-white/10 pt-6 mb-8">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-white/60">Subtotal</span>
+                    <span className="text-white font-semibold">{formatPrice(totalPrice)}</span>
+                  </div>
+                  <div className="flex items-center justify-between mb-6">
+                    <span className="text-white/60 text-sm">Delivery</span>
+                    <span className="text-green-400 text-sm font-semibold">Free</span>
+                  </div>
+                  <div className="border-t border-white/10 pt-6">
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl font-bold text-white">Total</span>
+                      <span className="text-3xl font-bold text-orange-500">{formatPrice(totalPrice)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <Link
+                    href="/checkout"
+                    className="w-full bg-orange-500 hover:bg-orange-600 border border-orange-400/30 text-white py-4 rounded-full font-bold transition-all text-center flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
                   >
-                    Clear Cart
-                  </Button>
-                  <Link 
-                    href="/menu"
-                    className="flex-1 bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition-colors text-center flex items-center justify-center min-h-[44px]"
-                  >
-                    Continue Shopping
+                    <Icon name="payment" size={20} />
+                    <span>Proceed to Checkout</span>
                   </Link>
+
+                  <Link
+                    href="/menu"
+                    className="w-full bg-neutral-800/50 hover:bg-neutral-800 border border-white/10 text-white py-4 rounded-full font-semibold transition-all text-center flex items-center justify-center gap-2"
+                  >
+                    <Icon name="menu" size={20} />
+                    <span>Continue Shopping</span>
+                  </Link>
+
+                  <button
+                    onClick={clearCart}
+                    className="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 py-4 rounded-full font-semibold transition-all flex items-center justify-center gap-2"
+                  >
+                    <Icon name="delete" size={20} />
+                    <span>Clear Cart</span>
+                  </button>
                 </div>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

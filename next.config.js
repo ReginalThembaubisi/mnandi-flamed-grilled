@@ -1,6 +1,14 @@
 /** @type {import('next').Config} */
 const nextConfig = {
-  // App Router is enabled by default in Next.js 13.5+
+  async rewrites() {
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
+      },
+    ]
+  },
 }
 
 module.exports = nextConfig

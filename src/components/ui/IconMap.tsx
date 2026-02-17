@@ -30,6 +30,8 @@ import {
   Filter,
   X,
   Menu as MenuIcon,
+  Star,
+  Image,
 } from 'lucide-react'
 
 export const icons = {
@@ -50,7 +52,9 @@ export const icons = {
   location: MapPin,
   payment: CreditCard,
   back: ArrowLeft,
+  'arrow-left': ArrowLeft,
   next: ArrowRight,
+  arrowRight: ArrowRight,
   add: Plus,
   remove: Minus,
   delete: Trash2,
@@ -63,6 +67,11 @@ export const icons = {
   filter: Filter,
   close: X,
   hamburger: MenuIcon,
+  star: Star,
+  image: Image,
+  trash: Trash2,
+  plus: Plus,
+  download: ArrowRight, // Using ArrowRight as placeholder or import proper icon
 }
 
 export type IconName = keyof typeof icons

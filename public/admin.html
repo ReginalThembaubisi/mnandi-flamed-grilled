@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Mnandi Flamed Grilled</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="container">
+            <div class="logo">🔥 Mnandi Admin</div>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="menu.html">Menu</a></li>
+                <li><a href="track.html">Track Order</a></li>
+                <li><a href="admin.html">Admin</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <div class="container">
+        <div style="text-align: center; padding: 3rem 0 2rem; color: white;">
+            <h1 style="font-size: 3rem; margin-bottom: 0.5rem;">📊 Admin Dashboard</h1>
+            <p style="font-size: 1.2rem;">Manage orders and view analytics</p>
+        </div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="container">
+        <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+            <div class="card" style="text-align: center;">
+                <h3 style="color: var(--success);">Today's Revenue</h3>
+                <p id="today-revenue"
+                    style="font-size: 2.5rem; font-weight: bold; color: var(--primary-color); margin: 1rem 0;">R0.00</p>
+            </div>
+            <div class="card" style="text-align: center;">
+                <h3 style="color: var(--accent-color);">Pending Orders</h3>
+                <p id="pending-orders"
+                    style="font-size: 2.5rem; font-weight: bold; color: var(--warning); margin: 1rem 0;">0</p>
+            </div>
+            <div class="card" style="text-align: center;">
+                <h3 style="color: var(--secondary-color);">Total Customers</h3>
+                <p id="total-customers"
+                    style="font-size: 2.5rem; font-weight: bold; color: var(--accent-color); margin: 1rem 0;">0</p>
+            </div>
+            <div class="card" style="text-align: center;">
+                <h3">Completed Today</h3>
+                    <p id="completed-orders"
+                        style="font-size: 2.5rem; font-weight: bold; color: var(--success); margin: 1rem 0;">0</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Orders Management -->
+    <div class="container">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2>Recent Orders</h2>
+                <button class="btn btn-primary" onclick="loadOrders()">🔄 Refresh</button>
+            </div>
+
+            <div id="orders-list">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!--  Footer -->
+    <footer>
+        <p>&copy; 2026 Mnandi Flamed Grilled. All rights reserved.</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStatistics();
+            loadOrders();
+
+            // Auto-refresh every 30 seconds
+            setInterval(() => {
+                loadStatistics();
+                loadOrders();
+            }, 30000);
+        });
+
+        async function loadStatistics() {
+            try {
+                const [orderStats, customerStats] = await Promise.all([
+                    api.getOrderStats(),
+                    api.getCustomerStats()
+                ]);
+
+                document.getElementById('today-revenue').textContent = utils.formatCurrency(orderStats.todayRevenue || 0);
+                document.getElementById('pending-orders').textContent = orderStats.pending || 0;
+                document.getElementById('completed-orders').textContent = orderStats.completed || 0;
+                document.getElementById('total-customers').textContent = customerStats.totalCustomers || 0;
+            } catch (error) {
+                console.error('Error loading statistics:', error);
+            }
+        }
+
+        async function loadOrders() {
+            const container = document.getElementById('orders-list');
+            utils.showLoading(container);
+
+            try {
+                const orders = await api.getAllOrders();
+
+                if (orders.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; padding: 2rem; color: #999;">No orders yet</p>';
+                    return;
+                }
+
+                // Sort by most recent first
+                orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+                container.innerHTML = `
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                                    <th style="padding: 1rem; text-align: left;">Order #</th>
+                                    <th style="padding: 1rem; text-align: left;">Customer</th>
+                                    <th style="padding: 1rem; text-align: left;">Location</th>
+                                    <th style="padding: 1rem; text-align: right;">Total</th>
+                                    <th style="padding: 1rem; text-align: center;">Status</th>
+                                    <th style="padding: 1rem; text-align: center;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${orders.map(order => createOrderRow(order)).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } catch (error) {
+                utils.showError(container, 'Failed to load orders');
+            }
+        }
+
+        function createOrderRow(order) {
+            const statusColors = {
+                'PENDING': 'var(--warning)',
+                'CONFIRMED': 'var(--accent-color)',
+                'PREPARING': 'var(--primary-color)',
+                'OUT_FOR_DELIVERY': '#17a2b8',
+                'DELIVERED': 'var(--success)',
+                'CANCELLED': 'var(--danger)'
+            };
+
+            return `
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 1rem;"><strong>${order.confirmationNumber}</strong></td>
+                    <td style="padding: 1rem;">
+                        <div>${order.customerName}</div>
+                        <div style="font-size: 0.85rem; color: #666;">${order.customerPhone}</div>
+                    </td>
+                    <td style="padding: 1rem;">
+                        <div>${order.customerResidence}</div>
+                        <div style="font-size: 0.85rem; color: #666;">Room ${order.customerRoom}</div>
+                    </td>
+                    <td style="padding: 1rem; text-align: right; font-weight: bold; color: var(--primary-color);">
+                        ${utils.formatCurrency(order.total)}
+                    </td>
+                    <td style="padding: 1rem; text-align: center;">
+                        <select onchange="updateStatus(${order.id}, this.value)" 
+                                style="padding: 0.5rem; border-radius: 5px; border: 2px solid ${statusColors[order.status]}; font-weight: bold; background: white;">
+                            <option value="PENDING" ${order.status === 'PENDING' ? 'selected' : ''}>Pending</option>
+                            <option value="CONFIRMED" ${order.status === 'CONFIRMED' ? 'selected' : ''}>Confirmed</option>
+                            <option value="PREPARING" ${order.status === 'PREPARING' ? 'selected' : ''}>Preparing</option>
+                            <option value="OUT_FOR_DELIVERY" ${order.status === 'OUT_FOR_DELIVERY' ? 'selected' : ''}>Out for Delivery</option>
+                            <option value="DELIVERED" ${order.status === 'DELIVERED' ? 'selected' : ''}>Delivered</option>
+                            <option value="CANCELLED" ${order.status === 'CANCELLED' ? 'selected' : ''}>Cancelled</option>
+                        </select>
+                    </td>
+                    <td style="padding: 1rem; text-align: center;">
+                        <button class="btn btn-secondary" style="padding: 0.5rem 1rem;" onclick="viewOrderDetails(${order.id})">
+                            View
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+
+        async function updateStatus(orderId, newStatus) {
+            try {
+                await api.updateOrderStatus(orderId, newStatus);
+                showNotification('Order status updated successfully!', 'success');
+                loadStatistics();
+            } catch (error) {
+                showNotification('Failed to update order status', 'error');
+                loadOrders(); // Reload to reset dropdown
+            }
+        }
+
+        function viewOrderDetails(orderId) {
+            // For now, just show an alert. Could be expanded to a modal
+            alert(`Viewing details for order ID: ${orderId}\n\nThis could open a detailed modal with all order information.`);
+        }
+
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type}`;
+            notification.style.position = 'fixed';
+            notification.style.top = '100px';
+            notification.style.right = '20px';
+            notification.style.zIndex = '9999';
+            notification.style.minWidth = '300px';
+            notification.innerHTML = message;
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => notification.remove(), 3000);
+        }
+    </script>
+
+    <style>
+        table {
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 768px) {
+            table {
+                font-size: 0.85rem;
+            }
+
+            th,
+            td {
+                padding: 0.5rem !important;
+            }
+        }
+    </style>
+</body>
+
+</html>
