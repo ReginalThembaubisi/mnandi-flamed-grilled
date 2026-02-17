@@ -11,7 +11,9 @@ public class MnandiApplication {
     }
 
     @org.springframework.context.annotation.Bean
-    org.springframework.boot.CommandLineRunner init(com.mnandi.repository.UserRepository userRepository) {
+    org.springframework.boot.CommandLineRunner init(com.mnandi.repository.UserRepository userRepository,
+            @org.springframework.beans.factory.annotation.Value("${mnandi.admin.initial-password}") String initialPassword,
+            org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
         return args -> {
             System.out.println("checking users...");
             userRepository.findAll()
@@ -21,7 +23,7 @@ public class MnandiApplication {
                 System.out.println("No users found. Creating admin...");
                 com.mnandi.model.User admin = new com.mnandi.model.User();
                 admin.setUsername("admin");
-                admin.setPassword("$2b$10$sZ1uAVGP1sUw.QvnawfxyuUe9Jw9um00/I0KrmGXQIUmwXPE/aEu6");
+                admin.setPassword(passwordEncoder.encode(initialPassword));
                 admin.setRole("ADMIN");
                 userRepository.save(admin);
                 System.out.println("Admin created manually.");

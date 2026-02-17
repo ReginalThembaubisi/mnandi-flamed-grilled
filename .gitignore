@@ -23,6 +23,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Local env files
+.env
 .env*.local
 
 # Vercel
@@ -34,3 +35,16 @@ next-env.d.ts
 
 # Documentation (optional)
 DEPLOYMENT.md
+
+# Java
+target/
+*.jar
+*.class
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Uploads
+uploads/
