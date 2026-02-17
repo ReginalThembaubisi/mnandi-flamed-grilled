@@ -27,6 +27,7 @@ Railway will detect the code. We need to tell it how to build and run the Java b
         - `SPRING_DATASOURCE_USERNAME`: `postgres` (or as provided by Railway DB)
         - `SPRING_DATASOURCE_PASSWORD`: (as provided by Railway DB)
         - `JDBC_DATABASE_URL`: (the JDBC URL for Postgres, e.g., `jdbc:postgresql://host:port/db`)
+        - `MNANDI_ADMIN_INITIAL_PASSWORD`: (Optional) Initial password for the admin user. Defaults to `mnandi2024` if not set.
 
 ### Adding a Database
 1.  In the project canvas, right-click (or click **New**) -> **Database** -> **Add PostgreSQL**.
@@ -46,6 +47,8 @@ Since the frontend is in the same repo, we need to deploy it as a separate servi
     - **Start Command**: `npm start`
 6.  **Variables**:
     - `BACKEND_URL`: The internal Railway URL of your backend service (e.g., `http://backend-service.railway.internal:8080` or the public domain `https://mnandi-backend.up.railway.app`).
+    - `NEXT_PUBLIC_ADMIN_USERNAME`: Admin username for the dashboard login.
+    - `NEXT_PUBLIC_ADMIN_PASSWORD`: Admin password for the dashboard login.
 
 ## 4. Final Steps
 1.  **Generate Domain**: Go to **Settings** -> **Networking** for the Frontend service and click **Generate Domain**.
