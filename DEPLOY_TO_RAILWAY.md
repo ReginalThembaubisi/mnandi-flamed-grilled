@@ -20,7 +20,8 @@ Railway will detect the code. We need to tell it how to build and run the Java b
 2.  Go to **Settings**.
 3.  Scroll to **Build**.
     - **Builder**: Select `Dockerfile`.
-    - **Root Directory**: Leave as `/` (since `Dockerfile` is in the root).
+    - **Dockerfile Path**: Change `/Dockerfile` to `/backend.dockerfile`.
+    - **Root Directory**: Leave as `/`.
 4.  Go to **Variables**.
     - Add the following variables:
         - `SPRING_DATASOURCE_USERNAME`: `postgres` (or as provided by Railway DB)
