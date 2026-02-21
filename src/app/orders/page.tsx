@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useAdminAuth } from '../../hooks/useAdminAuth'
-import { clearAdminSession } from '../../lib/adminAuth'
 import { AdminLayout } from '../../components/admin/AdminLayout'
-import { safeJsonParse, safeJsonStringify, sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone } from '../../lib/security'
+import { safeJsonParse, sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone } from '../../lib/security'
+import { orderAPI } from '../../lib/javaAPI'
 
 interface CartItem {
   id: string
@@ -34,46 +33,79 @@ interface Order {
   total: number
   timestamp: string
   orderId: string
+  backendId?: number
   status?: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled'
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'new' | 'ready' | 'completed'>('new')
   const router = useRouter()
   const { isAuthenticated, isChecking } = useAdminAuth()
 
-  useEffect(() => {
-    if (!isChecking && !isAuthenticated) {
-      return
-    }
+  const mapApiOrders = (response: any[]): Order[] => {
+    return response.map((r: any) => ({
+      customer: {
+        name: r.customerName,
+        roomNumber: r.customerRoom,
+        phoneNumber: r.customerPhone,
+        deliveryType: (r.customerResidence && r.customerResidence !== 'Pickup' ? 'delivery' : 'pickup') as 'pickup' | 'delivery',
+        deliveryAddress: r.customerResidence !== 'Pickup' ? r.customerResidence : undefined,
+        instructions: r.notes,
+      },
+      items: safeJsonParse<CartItem[]>(r.items, []),
+      total: r.total,
+      timestamp: r.createdAt || new Date().toISOString(),
+      orderId: r.confirmationNumber || String(r.id),
+      backendId: r.id,
+      status: (r.status || 'pending') as Order['status'],
+    }))
+  }
 
-    if (!isAuthenticated) {
-      return
-    }
-
+  const loadOrders = async () => {
     try {
-      const savedOrders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
-      // Add default status to orders that don't have one
-      const ordersWithStatus = savedOrders.map((order: Order) => ({
-        ...order,
-        status: order.status || 'pending'
-      }))
-      setOrders(ordersWithStatus)
+      const response = await orderAPI.getAll()
+      setOrders(mapApiOrders(response))
+      setError(null)
     } catch (err) {
-      console.error('Error loading orders:', err)
+      console.error('Error loading orders from backend:', err)
+      setError('Could not connect to the backend. Please check server status.')
     } finally {
       setLoading(false)
     }
-  }, [router, isAuthenticated, isChecking])
+  }
 
-  const updateOrderStatus = (orderId: string, newStatus: Order['status']) => {
-    const updatedOrders = orders.map(order => 
-      order.orderId === orderId ? { ...order, status: newStatus } : order
+  useEffect(() => {
+    if (isChecking) return
+    if (!isAuthenticated) return
+
+    loadOrders()
+
+    // Poll for new orders every 5 seconds
+    const interval = setInterval(loadOrders, 5000)
+    return () => clearInterval(interval)
+  }, [isAuthenticated, isChecking])
+
+  const updateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
+    // Optimistic update
+    setOrders(prev =>
+      prev.map(order => order.orderId === orderId ? { ...order, status: newStatus } : order)
     )
-    setOrders(updatedOrders)
-    localStorage.setItem('orders', safeJsonStringify(updatedOrders))
+
+    const targetOrder = orders.find(o => o.orderId === orderId)
+    if (targetOrder?.backendId) {
+      try {
+        await orderAPI.updateStatus(targetOrder.backendId, newStatus!)
+      } catch (e) {
+        console.error('Failed to update order status on backend:', e)
+        // Revert on failure
+        setOrders(prev =>
+          prev.map(order => order.orderId === orderId ? { ...order, status: targetOrder.status } : order)
+        )
+      }
+    }
   }
 
   const cancelOrder = (orderId: string) => {
@@ -84,59 +116,30 @@ export default function OrdersPage() {
 
   const sendWhatsAppNotification = (order: Order) => {
     try {
-      // Validate and sanitize phone number
       const phoneValidation = validateAndSanitizePhone(order.customer.phoneNumber)
       if (!phoneValidation.valid) {
         alert(`Invalid phone number: ${phoneValidation.error}`)
         return
       }
-      
+
       let phoneNumber = phoneValidation.sanitized
-      
-      // Add South African country code if not present
       if (phoneNumber.startsWith('0')) {
         phoneNumber = '27' + phoneNumber.substring(1)
       } else if (!phoneNumber.startsWith('27')) {
         phoneNumber = '27' + phoneNumber
       }
 
-      // Final security check
       const sanitizedPhone = sanitizePhoneForWhatsApp(phoneNumber)
 
-      // Create WhatsApp message with sanitized content
       const deliveryInfo = order.customer.deliveryType === 'delivery'
-        ? `🚚 *Delivery Details:*
-• Address: ${sanitizeText(order.customer.deliveryAddress || '')}
-• Customer: ${sanitizeText(order.customer.name)}
+        ? `🚚 *Delivery Details:*\n• Address: ${sanitizeText(order.customer.deliveryAddress || '')}\n• Customer: ${sanitizeText(order.customer.name)}\n\n✅ Your order is ready for delivery! We'll be coming to deliver it soon.`
+        : `📍 *Pickup Details:*\n• Room: ${sanitizeText(order.customer.roomNumber)}\n• Customer: ${sanitizeText(order.customer.name)}\n\n✅ Your order is ready for pickup! Please come and collect it.`
 
-✅ Your order is ready for delivery! We'll be coming to deliver it soon.`
-        : `📍 *Pickup Details:*
-• Room: ${sanitizeText(order.customer.roomNumber)}
-• Customer: ${sanitizeText(order.customer.name)}
+      const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*\n\nOrder #${sanitizeText(order.orderId.slice(-6))}\n\n📋 *Order Details:*\n${order.items.map(item => `• ${sanitizeText(item.name)} x${item.quantity}`).join('\n')}\n\n💰 *Total: R${order.total.toFixed(2)}*\n\n${deliveryInfo}\n\nThank you for choosing Mnandi Flame-Grilled! 🎉`
 
-✅ Your order is ready for pickup! Please come and collect it.`
-
-      const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*
-
-Order #${sanitizeText(order.orderId.slice(-6))}
-
-📋 *Order Details:*
-${order.items.map(item => `• ${sanitizeText(item.name)} x${item.quantity}`).join('\n')}
-
-💰 *Total: R${order.total.toFixed(2)}*
-
-${deliveryInfo}
-
-Thank you for choosing Mnandi Flame-Grilled! 🎉`
-
-      // Sanitize and encode message for URL
       const sanitizedMessage = sanitizeMessageForWhatsApp(message)
       const encodedMessage = encodeURIComponent(sanitizedMessage)
-      
-      // Create WhatsApp URL
       const whatsappUrl = `https://wa.me/${sanitizedPhone}?text=${encodedMessage}`
-      
-      // Open WhatsApp in new tab
       window.open(whatsappUrl, '_blank')
     } catch (error) {
       console.error('Error sending WhatsApp notification:', error)
@@ -146,7 +149,6 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
 
   const filteredOrders = orders.filter(order => {
     if (filter === 'new') {
-      // Show only active orders (pending, preparing, ready) - exclude completed and cancelled
       return order.status === 'pending' || order.status === 'preparing' || order.status === 'ready'
     }
     return order.status === filter
@@ -183,7 +185,7 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
   }
 
   if (!isAuthenticated) {
-    return null // Will redirect via useAdminAuth
+    return null
   }
 
   return (
@@ -193,6 +195,12 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Orders Management</h1>
           <p className="text-gray-600">Track and manage customer orders</p>
         </div>
+
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
+            ⚠️ {error}
+          </div>
+        )}
 
         {/* Filter Buttons */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
@@ -206,11 +214,10 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
               <button
                 key={key}
                 onClick={() => setFilter(key as any)}
-                className={`px-4 py-2.5 rounded-lg transition-colors font-medium min-h-[44px] ${
-                  filter === key
+                className={`px-4 py-2.5 rounded-lg transition-colors font-medium min-h-[44px] ${filter === key
                     ? 'bg-green-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                  }`}
               >
                 <span className="mr-2">{emoji}</span>
                 {label}
@@ -224,11 +231,11 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
             <div className="text-6xl mb-4">📋</div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">No orders found</h2>
             <p className="text-gray-600">
-              {filter === 'new' 
-                ? "No active orders to manage." 
+              {filter === 'new'
+                ? "No active orders to manage."
                 : filter === 'ready'
-                ? "No orders ready for delivery."
-                : "No completed orders."
+                  ? "No orders ready for delivery."
+                  : "No completed orders."
               }
             </p>
           </div>
@@ -245,7 +252,7 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
                       {new Date(order.timestamp).toLocaleString()}
                     </p>
                   </div>
-                  
+
                   <div className="flex items-center justify-between sm:justify-end space-x-4">
                     <span className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium ${getStatusColor(order.status || 'pending')}`}>
                       {getStatusEmoji(order.status || 'pending')} {order.status || 'pending'}
@@ -262,22 +269,21 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                     <p><strong>Name:</strong> {order.customer.name}</p>
                     <p><strong>Phone:</strong> {order.customer.phoneNumber}</p>
-                    <p><strong>Type:</strong> 
-                      <span className={`ml-1 px-2 py-1 rounded text-xs ${
-                        order.customer.deliveryType === 'delivery' 
-                          ? 'bg-blue-100 text-blue-800' 
+                    <p><strong>Type:</strong>
+                      <span className={`ml-1 px-2 py-1 rounded text-xs ${order.customer.deliveryType === 'delivery'
+                          ? 'bg-blue-100 text-blue-800'
                           : 'bg-green-100 text-green-800'
-                      }`}>
+                        }`}>
                         {order.customer.deliveryType === 'delivery' ? '🚚 Delivery' : '🏃‍♂️ Pickup'}
                       </span>
                     </p>
                     <p><strong>
                       {order.customer.deliveryType === 'delivery' ? 'Address:' : 'Room:'}
                     </strong> {
-                      order.customer.deliveryType === 'delivery' 
-                        ? order.customer.deliveryAddress 
-                        : order.customer.roomNumber
-                    }</p>
+                        order.customer.deliveryType === 'delivery'
+                          ? order.customer.deliveryAddress
+                          : order.customer.roomNumber
+                      }</p>
                     {order.customer.instructions && (
                       <p className="md:col-span-2"><strong>Instructions:</strong> {order.customer.instructions}</p>
                     )}
@@ -296,9 +302,7 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
                               src={item.image}
                               alt={item.name}
                               className="w-10 h-10 object-cover rounded-lg"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none'
-                              }}
+                              onError={(e) => { e.currentTarget.style.display = 'none' }}
                             />
                           ) : (
                             <div className="w-10 h-10 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex items-center justify-center">
@@ -308,9 +312,7 @@ Thank you for choosing Mnandi Flame-Grilled! 🎉`
                           <div>
                             <p className="font-medium text-gray-800">{item.name}</p>
                             {item.isCombo && item.selectedSide && (
-                              <p className="text-sm text-blue-600 font-medium">
-                                🍽️ Side: {item.selectedSide}
-                              </p>
+                              <p className="text-sm text-blue-600 font-medium">🍽️ Side: {item.selectedSide}</p>
                             )}
                             <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
                           </div>
