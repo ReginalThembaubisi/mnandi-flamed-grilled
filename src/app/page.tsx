@@ -68,10 +68,10 @@ export default function Home() {
           <img
             src="/hero-chicken.png"
             alt="Flame Grilled Chicken"
-            className="w-full h-full object-cover opacity-30"
+            className="w-full h-full object-cover opacity-55"
           />
           {/* Warm light gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-b from-orange-50/90 via-orange-50/70 to-orange-50"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-orange-50/60 via-orange-50/40 to-orange-50/80"></div>
         </div>
 
         {/* Subtle warm dot pattern */}
