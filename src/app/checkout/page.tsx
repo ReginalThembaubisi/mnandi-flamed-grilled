@@ -194,15 +194,15 @@ export default function CheckoutPage() {
 
   if (cartItems.length === 0 && !orderSubmitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="min-h-screen bg-orange-50">
         <div className="container mx-auto px-4 py-8">
           <div className="text-center py-12">
             <div className="text-6xl mb-4">🛒</div>
-            <h2 className="text-2xl font-semibold text-gray-800 mb-2">Your cart is empty</h2>
-            <p className="text-gray-600 mb-6">Add some delicious items to your cart first!</p>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-2">Your cart is empty</h2>
+            <p className="text-gray-500 mb-6">Add some delicious items to your cart first!</p>
             <Link
               href="/menu"
-              className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors inline-flex items-center space-x-2"
+              className="bg-orange-500 text-white px-8 py-3 rounded-full hover:bg-orange-600 transition-colors inline-flex items-center space-x-2 font-bold shadow-lg shadow-orange-200"
             >
               <span>🍽️</span>
               <span>Browse Menu</span>
@@ -215,76 +215,76 @@ export default function CheckoutPage() {
 
   if (orderSubmitted) {
     return (
-      <div className="min-h-screen bg-neutral-950">
+      <div className="min-h-screen bg-orange-50">
         <div className="container mx-auto px-4 py-16">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="max-w-2xl mx-auto"
           >
-            <div className="bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl p-8 sm:p-12 text-center">
-              <div className="w-24 h-24 bg-green-500/20 border-2 border-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Icon name="check" size={48} className="text-green-500" />
+            <div className="bg-white border border-orange-100 rounded-2xl shadow-lg p-8 sm:p-12 text-center">
+              <div className="w-24 h-24 bg-green-100 border-2 border-green-400 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Icon name="check" size={48} className="text-green-600" />
               </div>
-              <h1 className="text-4xl font-bold text-white mb-4">Order Confirmed!</h1>
-              <p className="text-white/60 mb-8 text-lg">
-                Thank you, <strong className="text-white">{customerInfo.name}</strong>! Your order has been received.
+              <h1 className="text-4xl font-bold text-gray-900 mb-4">Order Confirmed!</h1>
+              <p className="text-gray-500 mb-8 text-lg">
+                Thank you, <strong className="text-gray-900">{customerInfo.name}</strong>! Your order has been received.
               </p>
 
-              <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-6 mb-6">
+              <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-6 mb-6">
                 <div className="flex items-center justify-center gap-2 mb-3">
-                  <Icon name="orders" size={20} className="text-orange-400" />
-                  <h3 className="font-bold text-orange-400">Order Confirmation Number</h3>
+                  <Icon name="orders" size={20} className="text-orange-500" />
+                  <h3 className="font-bold text-orange-700">Order Confirmation Number</h3>
                 </div>
-                <p className="text-3xl font-bold text-orange-500 mb-2">
+                <p className="text-3xl font-bold text-orange-600 mb-2">
                   {safeJsonParse<any[]>(localStorage.getItem('orders') || '[]', []).slice(-1)[0]?.confirmationNumber || 'SHI-000000'}
                 </p>
-                <p className="text-sm text-orange-400/80">
+                <p className="text-sm text-orange-600/80">
                   Save this number for reference!
                 </p>
               </div>
 
-              <div className="bg-neutral-800/50 border border-white/10 rounded-2xl p-6 mb-6 text-left">
-                <h3 className="font-bold text-white mb-4">Order Details</h3>
-                <div className="space-y-2 text-white/60">
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-6 text-left">
+                <h3 className="font-bold text-gray-900 mb-4">Order Details</h3>
+                <div className="space-y-2 text-gray-500">
                   <div className="flex justify-between">
                     <span>Room:</span>
-                    <span className="text-white font-semibold">{customerInfo.roomNumber}</span>
+                    <span className="text-gray-900 font-semibold">{customerInfo.roomNumber}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Phone:</span>
-                    <span className="text-white font-semibold">{customerInfo.phoneNumber}</span>
+                    <span className="text-gray-900 font-semibold">{customerInfo.phoneNumber}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Type:</span>
-                    <span className="text-white font-semibold flex items-center gap-2">
+                    <span className="text-gray-900 font-semibold flex items-center gap-2">
                       <Icon name={customerInfo.deliveryType === 'delivery' ? 'package' : 'location'} size={16} />
                       {customerInfo.deliveryType === 'delivery' ? 'Delivery' : 'Pickup'}
                     </span>
                   </div>
                   {customerInfo.instructions && (
-                    <div className="flex justify-between pt-2 border-t border-white/10">
+                    <div className="flex justify-between pt-2 border-t border-gray-200">
                       <span>Instructions:</span>
-                      <span className="text-white font-semibold text-right max-w-[60%]">{customerInfo.instructions}</span>
+                      <span className="text-gray-900 font-semibold text-right max-w-[60%]">{customerInfo.instructions}</span>
                     </div>
                   )}
-                  <div className="flex justify-between pt-2 border-t border-white/10">
+                  <div className="flex justify-between pt-2 border-t border-gray-200">
                     <span>Total:</span>
                     <span className="text-orange-500 font-bold text-xl">{formatPrice(totalPrice)}</span>
                   </div>
                 </div>
               </div>
 
-              <p className="text-white/60 mb-8">
+              <p className="text-gray-500 mb-8">
                 It will be ready soon! We'll contact you when it's ready for {customerInfo.deliveryType === 'delivery' ? 'delivery' : 'pickup'}.
               </p>
 
-              <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 mb-8 text-left">
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-8 text-left">
                 <div className="flex items-start gap-3">
-                  <Icon name="warning" size={20} className="text-red-400 mt-1 flex-shrink-0" />
+                  <Icon name="warning" size={20} className="text-red-500 mt-1 flex-shrink-0" />
                   <div>
-                    <h4 className="font-bold text-red-400 mb-1">Need to Cancel?</h4>
-                    <p className="text-sm text-red-400/80">
+                    <h4 className="font-bold text-red-600 mb-1">Need to Cancel?</h4>
+                    <p className="text-sm text-red-500/90">
                       You can cancel your order anytime before we start cooking. Please call us with your confirmation number: <strong>{orderNumber}</strong>
                     </p>
                   </div>
@@ -294,14 +294,14 @@ export default function CheckoutPage() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link
                   href="/menu"
-                  className="bg-orange-500 hover:bg-orange-600 border border-orange-400/30 text-white px-8 py-4 rounded-full font-bold transition-all shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2"
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-full font-bold transition-all shadow-lg shadow-orange-200 flex items-center justify-center gap-2 hover:scale-105"
                 >
                   <Icon name="menu" size={20} />
                   <span>Order More</span>
                 </Link>
                 <Link
                   href="/"
-                  className="bg-neutral-800/50 hover:bg-neutral-800 border border-white/10 text-white px-8 py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2"
+                  className="bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 px-8 py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2"
                 >
                   <Icon name="home" size={20} />
                   <span>Home</span>
@@ -315,26 +315,26 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950">
+    <div className="min-h-screen bg-orange-50">
       {/* Hero Header */}
-      <div className="relative bg-neutral-950 border-b border-white/10">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-5" style={{
-          backgroundImage: 'radial-gradient(circle at 1px 1px, rgb(255 255 255) 1px, transparent 0)',
+      <div className="relative bg-white border-b border-orange-100 shadow-sm">
+        {/* Subtle warm pattern */}
+        <div className="absolute inset-0 opacity-[0.04]" style={{
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgb(180 60 0) 1px, transparent 0)',
           backgroundSize: '40px 40px'
         }}></div>
 
         <div className="relative container mx-auto px-4 py-12">
           <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
             <div>
-              <Link href="/cart" className="text-white/60 hover:text-white transition-colors flex items-center gap-2 mb-4">
+              <Link href="/cart" className="text-gray-500 hover:text-gray-800 transition-colors flex items-center gap-2 mb-4 font-medium">
                 <Icon name="arrow-left" size={20} />
                 <span>Back to Cart</span>
               </Link>
-              <h1 className="text-5xl sm:text-6xl font-bold text-white font-display tracking-tight">
+              <h1 className="text-5xl sm:text-6xl font-bold text-orange-600 font-display tracking-tight">
                 CHECKOUT
               </h1>
-              <p className="text-white/60 mt-3">Complete your order details</p>
+              <p className="text-gray-500 mt-3">Complete your order details</p>
             </div>
           </div>
         </div>
@@ -344,15 +344,15 @@ export default function CheckoutPage() {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
             {/* Customer Information Form */}
-            <div className="bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-8">
+            <div className="bg-white border border-orange-100 rounded-2xl shadow-md p-6 sm:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <Icon name="user" size={24} className="text-orange-500" />
-                <h2 className="text-2xl font-bold text-white">Customer Information</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Customer Information</h2>
               </div>
 
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-semibold text-white/80 mb-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Full Name *
                   </label>
                   <input
@@ -360,13 +360,13 @@ export default function CheckoutPage() {
                     value={customerInfo.name}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     placeholder="e.g., Themba Ubisi"
-                    className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-white/80 mb-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Room Number *
                   </label>
                   <input
@@ -374,13 +374,13 @@ export default function CheckoutPage() {
                     value={customerInfo.roomNumber}
                     onChange={(e) => handleInputChange('roomNumber', e.target.value)}
                     placeholder="e.g., F09-7"
-                    className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-white/80 mb-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Phone Number *
                   </label>
                   <input
@@ -388,7 +388,7 @@ export default function CheckoutPage() {
                     value={customerInfo.phoneNumber}
                     onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
                     placeholder="e.g., 082 123 4567"
-                    className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
                     required
                   />
                 </div>
@@ -398,41 +398,41 @@ export default function CheckoutPage() {
               <div className="mt-8">
                 <div className="flex items-center gap-3 mb-6">
                   <Icon name="package" size={20} className="text-orange-500" />
-                  <h3 className="text-xl font-bold text-white">Delivery Options</h3>
+                  <h3 className="text-xl font-bold text-gray-900">Delivery Options</h3>
                 </div>
                 <div className="space-y-4">
-                  <label className="flex items-center gap-4 p-4 bg-neutral-800/30 border border-white/10 rounded-xl cursor-pointer hover:bg-neutral-800/50 transition-all">
+                  <label className="flex items-center gap-4 p-4 bg-orange-50 border-2 border-orange-100 rounded-xl cursor-pointer hover:border-orange-400 transition-all">
                     <input
                       type="radio"
                       name="deliveryType"
                       value="pickup"
                       checked={customerInfo.deliveryType === 'pickup'}
                       onChange={(e) => handleInputChange('deliveryType', e.target.value as 'pickup' | 'delivery')}
-                      className="w-5 h-5 text-orange-500 focus:ring-orange-500/50 bg-neutral-800 border-white/20"
+                      className="w-5 h-5 text-orange-500 focus:ring-orange-400"
                     />
                     <div className="flex items-center gap-3 flex-1">
-                      <Icon name="location" size={20} className="text-white/60" />
+                      <Icon name="location" size={20} className="text-gray-500" />
                       <div>
-                        <div className="text-white font-semibold">Pickup</div>
-                        <div className="text-white/60 text-sm">Free</div>
+                        <div className="text-gray-900 font-semibold">Pickup</div>
+                        <div className="text-gray-500 text-sm">Free</div>
                       </div>
                     </div>
                   </label>
 
-                  <label className="flex items-center gap-4 p-4 bg-neutral-800/30 border border-white/10 rounded-xl cursor-pointer hover:bg-neutral-800/50 transition-all">
+                  <label className="flex items-center gap-4 p-4 bg-orange-50 border-2 border-orange-100 rounded-xl cursor-pointer hover:border-orange-400 transition-all">
                     <input
                       type="radio"
                       name="deliveryType"
                       value="delivery"
                       checked={customerInfo.deliveryType === 'delivery'}
                       onChange={(e) => handleInputChange('deliveryType', e.target.value as 'pickup' | 'delivery')}
-                      className="w-5 h-5 text-orange-500 focus:ring-orange-500/50 bg-neutral-800 border-white/20"
+                      className="w-5 h-5 text-orange-500 focus:ring-orange-400"
                     />
                     <div className="flex items-center gap-3 flex-1">
-                      <Icon name="package" size={20} className="text-white/60" />
+                      <Icon name="package" size={20} className="text-gray-500" />
                       <div>
-                        <div className="text-white font-semibold">Delivery</div>
-                        <div className="text-white/60 text-sm">R10 delivery fee</div>
+                        <div className="text-gray-900 font-semibold">Delivery</div>
+                        <div className="text-gray-500 text-sm">R10 delivery fee</div>
                       </div>
                     </div>
                   </label>
@@ -441,14 +441,14 @@ export default function CheckoutPage() {
                 {/* Delivery Address */}
                 {customerInfo.deliveryType === 'delivery' && (
                   <div className="mt-6">
-                    <label className="block text-sm font-semibold text-white/80 mb-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Delivery Address *
                     </label>
                     <textarea
                       value={customerInfo.deliveryAddress || ''}
                       onChange={(e) => handleInputChange('deliveryAddress', e.target.value)}
                       placeholder="e.g., Inyatsi Building, F09-7"
-                      className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 h-24 resize-none transition-all"
+                      className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 h-24 resize-none transition-all"
                       required={customerInfo.deliveryType === 'delivery'}
                     />
                   </div>
@@ -456,7 +456,7 @@ export default function CheckoutPage() {
 
                 {/* Order Instructions */}
                 <div className="mt-6">
-                  <label className="block text-sm font-semibold text-white/80 mb-2 flex items-center gap-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Icon name="edit" size={16} />
                     Special Instructions (Optional)
                   </label>
@@ -464,44 +464,44 @@ export default function CheckoutPage() {
                     value={customerInfo.instructions || ''}
                     onChange={(e) => handleInputChange('instructions', e.target.value)}
                     placeholder="How do you want your meat? (e.g., 'Normal', 'Mild', 'Hot', 'Extra hot', 'Call when ready')"
-                    className="w-full px-4 py-3 bg-neutral-800/50 border border-white/10 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 h-24 resize-none transition-all"
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 h-24 resize-none transition-all"
                   />
-                  <p className="text-xs text-white/40 mt-2">
+                  <p className="text-xs text-gray-400 mt-2">
                     We'll do our best to accommodate your requests!
                   </p>
                 </div>
               </div>
 
               <div className="mt-8 space-y-4">
-                <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl">
                   <div className="flex items-start gap-3">
-                    <Icon name="notification" size={20} className="text-orange-400 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-orange-400/90">
+                    <Icon name="notification" size={20} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-orange-700">
                       <strong>Note:</strong> This information will be saved for future orders to make checkout faster!
                     </p>
                   </div>
                 </div>
 
-                <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
                   <div className="flex items-start gap-3">
-                    <Icon name="warning" size={20} className="text-yellow-400 mt-0.5 flex-shrink-0" />
+                    <Icon name="warning" size={20} className="text-yellow-600 mt-0.5 flex-shrink-0" />
                     <div>
-                      <h4 className="font-bold text-yellow-400 mb-2">Cancellation Policy</h4>
-                      <ul className="text-sm text-yellow-400/90 space-y-1.5">
+                      <h4 className="font-bold text-yellow-700 mb-2">Cancellation Policy</h4>
+                      <ul className="text-sm text-yellow-700 space-y-1.5">
                         <li className="flex items-start gap-2">
-                          <span className="text-yellow-400">•</span>
+                          <span>•</span>
                           <span>You can cancel your order before we start cooking</span>
                         </li>
                         <li className="flex items-start gap-2">
-                          <span className="text-yellow-400">•</span>
+                          <span>•</span>
                           <span>Call us to cancel anytime before cooking starts</span>
                         </li>
                         <li className="flex items-start gap-2">
-                          <span className="text-yellow-400">•</span>
+                          <span>•</span>
                           <span>Once cooking starts, cancellation is not possible</span>
                         </li>
                         <li className="flex items-start gap-2">
-                          <span className="text-yellow-400">•</span>
+                          <span>•</span>
                           <span>We'll contact you if there are any issues</span>
                         </li>
                       </ul>
@@ -512,92 +512,92 @@ export default function CheckoutPage() {
             </div>
 
             {/* Order Summary */}
-            <div className="bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-8 lg:sticky lg:top-8">
-              <div className="flex items-center gap-3 mb-6">
-                <Icon name="orders" size={24} className="text-orange-500" />
-                <h2 className="text-2xl font-bold text-white">Order Summary</h2>
-              </div>
+            <div className="lg:col-span-1">
+              <div className="sticky top-8 bg-white border border-orange-100 rounded-2xl shadow-md p-6 sm:p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <Icon name="orders" size={24} className="text-orange-500" />
+                  <h2 className="text-2xl font-bold text-gray-900">Order Summary</h2>
+                </div>
 
-              <div className="space-y-4 mb-6">
-                {cartItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-4 p-3 bg-neutral-800/30 border border-white/10 rounded-xl">
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="w-14 h-14 object-cover rounded-lg"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none'
-                        }}
-                      />
-                    ) : (
-                      <div className="w-14 h-14 bg-neutral-800 rounded-lg flex items-center justify-center">
-                        <Icon name="menu" size={24} className="text-neutral-600" />
-                      </div>
-                    )}
-
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-white truncate">{item.name}</h3>
-                      {item.isCombo && item.selectedSide && (
-                        <div className="flex items-center gap-1 text-sm text-orange-400">
-                          <Icon name="check" size={14} />
-                          <span>Side: {item.selectedSide}</span>
+                <div className="space-y-4 mb-6">
+                  {cartItems.map((item) => (
+                    <div key={item.id} className="flex items-center gap-4 p-3 bg-orange-50 border border-orange-100 rounded-xl">
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="w-14 h-14 object-cover rounded-lg"
+                          onError={(e) => { e.currentTarget.style.display = 'none' }}
+                        />
+                      ) : (
+                        <div className="w-14 h-14 bg-orange-100 rounded-lg flex items-center justify-center">
+                          <Icon name="menu" size={24} className="text-orange-300" />
                         </div>
                       )}
-                      <p className="text-sm text-white/60">Qty: {item.quantity}</p>
+
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-gray-900 truncate">{item.name}</h3>
+                        {item.isCombo && item.selectedSide && (
+                          <div className="flex items-center gap-1 text-sm text-orange-600">
+                            <Icon name="check" size={14} />
+                            <span>Side: {item.selectedSide}</span>
+                          </div>
+                        )}
+                        <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="font-bold text-orange-500">
+                          {formatPrice(parseFloat(item.price) * item.quantity)}
+                        </p>
+                      </div>
                     </div>
+                  ))}
+                </div>
 
-                    <div className="text-right">
-                      <p className="font-bold text-orange-500">
-                        {formatPrice(parseFloat(item.price) * item.quantity)}
-                      </p>
+                <div className="border-t border-gray-100 pt-6 space-y-3">
+                  <div className="flex justify-between items-center text-gray-500">
+                    <span>Subtotal:</span>
+                    <span className="text-gray-900 font-semibold">{formatPrice(subtotal)}</span>
+                  </div>
+                  {deliveryFee > 0 && (
+                    <div className="flex justify-between items-center text-gray-500">
+                      <span>Delivery Fee:</span>
+                      <span className="text-gray-900 font-semibold">{formatPrice(deliveryFee)}</span>
                     </div>
+                  )}
+                  <div className="flex justify-between items-center text-xl font-bold border-t border-gray-100 pt-3">
+                    <span className="text-gray-900">Total:</span>
+                    <span className="text-orange-500 text-2xl">{formatPrice(totalPrice)}</span>
                   </div>
-                ))}
-              </div>
-
-              <div className="border-t border-white/10 pt-6 space-y-3">
-                <div className="flex justify-between items-center text-white/60">
-                  <span>Subtotal:</span>
-                  <span className="text-white font-semibold">{formatPrice(subtotal)}</span>
                 </div>
-                {deliveryFee > 0 && (
-                  <div className="flex justify-between items-center text-white/60">
-                    <span>Delivery Fee:</span>
-                    <span className="text-white font-semibold">{formatPrice(deliveryFee)}</span>
-                  </div>
+
+                <Button
+                  onClick={handleSubmitOrder}
+                  disabled={!isFormValid}
+                  variant="primary"
+                  size="lg"
+                  className="w-full mt-6 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-full shadow-lg shadow-orange-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isFormValid ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Icon name="check" size={20} />
+                      Place Order
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      <Icon name="warning" size={20} />
+                      Complete Form First
+                    </span>
+                  )}
+                </Button>
+
+                {!isFormValid && (
+                  <p className="text-sm text-red-500 mt-3 text-center">
+                    Please fill in all required fields
+                  </p>
                 )}
-                <div className="flex justify-between items-center text-xl font-bold border-t border-white/10 pt-3">
-                  <span className="text-white">Total:</span>
-                  <span className="text-orange-500 text-2xl">{formatPrice(totalPrice)}</span>
-                </div>
               </div>
-
-              <Button
-                onClick={handleSubmitOrder}
-                disabled={!isFormValid}
-                variant="primary"
-                size="lg"
-                className="w-full mt-6 bg-orange-500 hover:bg-orange-600 border border-orange-400/30 text-white font-bold rounded-full shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isFormValid ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Icon name="check" size={20} />
-                    Place Order
-                  </span>
-                ) : (
-                  <span className="flex items-center justify-center gap-2">
-                    <Icon name="warning" size={20} />
-                    Complete Form First
-                  </span>
-                )}
-              </Button>
-
-              {!isFormValid && (
-                <p className="text-sm text-red-400 mt-3 text-center">
-                  Please fill in all required fields
-                </p>
-              )}
             </div>
           </div>
         </div>
