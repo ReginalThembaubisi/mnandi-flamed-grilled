@@ -322,11 +322,11 @@ export default function MenuPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950">
+      <div className="min-h-screen bg-orange-50">
         <div className="container mx-auto px-4 py-16">
           <div className="text-center mb-12">
             <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-orange-500 mx-auto mb-6"></div>
-            <p className="text-white/60 text-xl">Loading our delicious menu...</p>
+            <p className="text-gray-500 text-xl">Loading our delicious menu...</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:gap-8">
             {[...Array(8)].map((_, index) => (
@@ -340,12 +340,12 @@ export default function MenuPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-        <div className="text-center bg-neutral-900/50 backdrop-blur-sm border border-white/10 p-12 rounded-2xl shadow-2xl max-w-md mx-4">
-          <p className="text-red-400 mb-6 text-lg">{error}</p>
+      <div className="min-h-screen bg-orange-50 flex items-center justify-center">
+        <div className="text-center bg-white border border-orange-100 p-12 rounded-2xl shadow-lg max-w-md mx-4">
+          <p className="text-red-500 mb-6 text-lg">{error}</p>
           <button
             onClick={() => fetchData()}
-            className="bg-orange-500 hover:bg-orange-600 border border-orange-400/30 text-white px-8 py-3 rounded-full font-bold transition-all shadow-lg shadow-orange-500/20"
+            className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-full font-bold transition-all shadow-lg shadow-orange-200"
           >
             Try Again
           </button>
@@ -356,13 +356,13 @@ export default function MenuPage() {
 
   if (!isOpen) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-        <div className="text-center bg-neutral-900/50 backdrop-blur-sm border border-white/10 p-12 rounded-2xl shadow-2xl max-w-md mx-4">
+      <div className="min-h-screen bg-orange-50 flex items-center justify-center">
+        <div className="text-center bg-white border border-orange-100 p-12 rounded-2xl shadow-lg max-w-md mx-4">
           <div className="text-6xl mb-6">🚫</div>
-          <h1 className="text-3xl font-bold text-white mb-4">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">
             We're closed today
           </h1>
-          <p className="text-white/60 text-lg">
+          <p className="text-gray-500 text-lg">
             See you tomorrow!
           </p>
         </div>
@@ -371,19 +371,19 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950">
+    <div className="min-h-screen bg-orange-50">
       {/* Hero Section */}
-      <div className="relative bg-neutral-950 border-b border-white/10">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-5" style={{
-          backgroundImage: 'radial-gradient(circle at 1px 1px, rgb(255 255 255) 1px, transparent 0)',
+      <div className="relative bg-white border-b border-orange-100 shadow-sm">
+        {/* Subtle warm pattern */}
+        <div className="absolute inset-0 opacity-[0.04]" style={{
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgb(180 60 0) 1px, transparent 0)',
           backgroundSize: '40px 40px'
         }}></div>
 
         <div className="relative container mx-auto px-4 py-16">
           {/* Top Navigation */}
           <div className="flex items-center justify-between mb-12">
-            <Link href="/" className="text-white/60 hover:text-white transition-colors flex items-center gap-2">
+            <Link href="/" className="text-gray-500 hover:text-gray-800 transition-colors flex items-center gap-2 font-medium">
               <Icon name="arrow-left" size={20} />
               <span>Back to Home</span>
             </Link>
@@ -393,13 +393,13 @@ export default function MenuPage() {
                 isLoading={refreshing}
                 variant="outline"
                 size="md"
-                className="border-white/20 text-white/80 hover:bg-white/10"
+                className="border-gray-200 text-gray-600 hover:bg-gray-100"
               >
                 <Icon name="refresh" size={18} />
               </Button>
               <Link
                 href="/cart"
-                className="bg-orange-500 border border-orange-400/30 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2 shadow-lg shadow-orange-500/20"
+                className="bg-orange-500 text-white px-4 py-2 rounded-full hover:bg-orange-600 transition-colors flex items-center gap-2 shadow-md shadow-orange-200 font-semibold"
               >
                 <Icon name="cart" size={18} />
                 <span className="hidden sm:inline">Cart</span>
@@ -410,15 +410,15 @@ export default function MenuPage() {
           {/* Main Heading */}
           <div className="text-center mb-12">
             {/* Business Status Badge */}
-            <div className="inline-flex items-center px-4 py-2 backdrop-blur-sm rounded-full mb-8 border bg-green-500/10 border-green-500/30">
+            <div className="inline-flex items-center px-4 py-2 rounded-full mb-8 border-2 bg-green-100 border-green-400">
               <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-              <span className="text-sm font-medium tracking-wide text-green-400">OPEN NOW</span>
+              <span className="text-sm font-semibold tracking-wide text-green-700">OPEN NOW</span>
             </div>
 
-            <h1 className="text-6xl sm:text-7xl md:text-8xl font-bold text-white mb-6 font-display tracking-tight">
+            <h1 className="text-6xl sm:text-7xl md:text-8xl font-bold text-orange-600 mb-6 font-display tracking-tight">
               OUR MENU
             </h1>
-            <p className="text-xl text-white/60 max-w-2xl mx-auto">
+            <p className="text-xl text-gray-500 max-w-2xl mx-auto">
               Flame-grilled perfection, delivered to your door
             </p>
           </div>
@@ -427,13 +427,13 @@ export default function MenuPage() {
           <div className="max-w-4xl mx-auto">
             {/* Search Bar */}
             <div className="relative mb-6">
-              <Icon name="search" size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/40" />
+              <Icon name="search" size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search our menu..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-14 pr-6 py-5 bg-neutral-900/50 backdrop-blur-sm border border-white/10 rounded-2xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all text-lg"
+                className="w-full pl-14 pr-6 py-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all text-lg"
               />
             </div>
 
@@ -444,8 +444,8 @@ export default function MenuPage() {
                   key={category}
                   onClick={() => setSelectedCategory(category)}
                   className={`px-6 py-3 rounded-full font-semibold transition-all ${selectedCategory === category
-                    ? 'bg-orange-500 text-white border border-orange-400/30 shadow-lg shadow-orange-500/20'
-                    : 'bg-neutral-900/50 backdrop-blur-sm text-white/60 border border-white/10 hover:bg-neutral-800/50 hover:text-white'
+                    ? 'bg-orange-500 text-white shadow-md shadow-orange-200'
+                    : 'bg-white text-gray-600 border-2 border-gray-200 hover:border-orange-400 hover:text-orange-600'
                     }`}
                 >
                   {category}
@@ -460,8 +460,8 @@ export default function MenuPage() {
       <div className="container mx-auto px-4 py-16">
         {filteredItems.length === 0 ? (
           <div className="text-center py-20">
-            <Icon name="search" size={80} className="mx-auto mb-6 text-white/20" />
-            <p className="text-white/60 text-xl mb-6">No items found matching your search.</p>
+            <Icon name="search" size={80} className="mx-auto mb-6 text-gray-300" />
+            <p className="text-gray-500 text-xl mb-6">No items found matching your search.</p>
             <Button
               onClick={() => {
                 setSearchTerm('')
