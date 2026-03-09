@@ -7,6 +7,7 @@ import { useAdminAuth } from '../../../hooks/useAdminAuth'
 import { clearAdminSession } from '../../../lib/adminAuth'
 import { AdminLayout } from '../../../components/admin/AdminLayout'
 import { sanitizeText, sanitizePhoneForWhatsApp, sanitizeMessageForWhatsApp, validateAndSanitizePhone, safeJsonParse, safeJsonStringify } from '../../../lib/security'
+import { customerAPI } from '../../../lib/javaAPI'
 
 interface Customer {
   name: string
@@ -64,37 +65,55 @@ export default function CustomersPage() {
     loadData()
   }, [router, isAuthenticated, isChecking])
 
-  const loadData = () => {
+  const loadData = async () => {
     try {
-      // Load customers from orders
-      const orders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
-      const customerMap = new Map<string, Customer>()
+      try {
+        // Fetch customers from Java backend
+        const apiCustomers = await customerAPI.getAll()
+        const mappedCustomers: Customer[] = apiCustomers.map((c: any) => ({
+          name: c.name || 'Unknown',
+          roomNumber: c.room || c.residence || '',
+          phoneNumber: c.phone || '',
+          firstOrderDate: c.firstOrderDate || c.createdAt || new Date().toISOString(),
+          totalOrders: c.orderCount || 0,
+          totalSpent: c.totalSpent || 0,
+          lastOrderDate: c.lastOrderDate || c.createdAt || new Date().toISOString()
+        }))
+        setCustomers(mappedCustomers.sort((a, b) => 
+          new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
+        ))
+      } catch (backendErr) {
+        console.error('Error fetching customers from backend:', backendErr);
+        // Fallback to local storage if API fails
+        const orders = safeJsonParse<Order[]>(localStorage.getItem('orders') || '[]', [])
+        const customerMap = new Map<string, Customer>()
 
-      orders.forEach((order: Order) => {
-        const phone = order.customer.phoneNumber
-        if (!customerMap.has(phone)) {
-          customerMap.set(phone, {
-            name: order.customer.name,
-            roomNumber: order.customer.roomNumber,
-            phoneNumber: phone,
-            firstOrderDate: order.timestamp,
-            totalOrders: 1,
-            totalSpent: order.total,
-            lastOrderDate: order.timestamp
-          })
-        } else {
-          const customer = customerMap.get(phone)!
-          customer.totalOrders += 1
-          customer.totalSpent += order.total
-          if (new Date(order.timestamp) > new Date(customer.lastOrderDate)) {
-            customer.lastOrderDate = order.timestamp
+        orders.forEach((order: Order) => {
+          const phone = order.customer.phoneNumber
+          if (!customerMap.has(phone)) {
+            customerMap.set(phone, {
+              name: order.customer.name,
+              roomNumber: order.customer.roomNumber,
+              phoneNumber: phone,
+              firstOrderDate: order.timestamp,
+              totalOrders: 1,
+              totalSpent: order.total,
+              lastOrderDate: order.timestamp
+            })
+          } else {
+            const customer = customerMap.get(phone)!
+            customer.totalOrders += 1
+            customer.totalSpent += order.total
+            if (new Date(order.timestamp) > new Date(customer.lastOrderDate)) {
+              customer.lastOrderDate = order.timestamp
+            }
           }
-        }
-      })
+        })
 
-      setCustomers(Array.from(customerMap.values()).sort((a, b) => 
-        new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
-      ))
+        setCustomers(Array.from(customerMap.values()).sort((a, b) => 
+          new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
+        ))
+      }
 
       // Load specials
       const savedSpecials = safeJsonParse<Special[]>(localStorage.getItem('specials') || '[]', [])
