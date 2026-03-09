@@ -156,6 +156,8 @@ export default function CustomersPage() {
     setShowSpecialForm(false)
   }
 
+  const MENU_URL = 'https://frontend-production-2c8d.up.railway.app/menu'
+
   const sendSpecialToAll = (special: Special) => {
     try {
       const message = `🎉 *SPECIAL OFFER - Mnandi Flame-Grilled*
@@ -168,7 +170,8 @@ ${special.discount ? `💰 *Discount: ${sanitizeText(special.discount)}*` : ''}
 
 ${special.validUntil ? `⏰ *Valid until: ${new Date(special.validUntil).toLocaleDateString()}*` : ''}
 
-🍽️ Order now and enjoy this amazing deal!
+🍽️ *Order now and enjoy this amazing deal!*
+👉 ${MENU_URL}
 
 Thank you for being a valued customer! 🎉`
 
@@ -221,7 +224,8 @@ ${special.discount ? `💰 *Discount: ${sanitizeText(special.discount)}*` : ''}
 
 ${special.validUntil ? `⏰ *Valid until: ${new Date(special.validUntil).toLocaleDateString()}*` : ''}
 
-🍽️ Order now and enjoy this amazing deal!
+🍽️ *Order now and enjoy this amazing deal!*
+👉 ${MENU_URL}
 
 Thank you for being a valued customer! 🎉`
 
@@ -449,10 +453,26 @@ Thank you for being a valued customer! 🎉`
                           onClick={() => sendSpecialToCustomer(special, customer)}
                           className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-blue-700 transition-colors font-medium shadow-sm min-h-[44px]"
                         >
-                          Send Special
+                          📱 {special.title}
                         </button>
                       ))}
                     </div>
+                    {specials.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <p className="text-xs text-gray-500 mb-1 font-medium">Broadcast to all customers:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {specials.map((special) => (
+                            <button
+                              key={`all-${special.id}`}
+                              onClick={() => sendSpecialToAll(special)}
+                              className="bg-green-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-green-700 transition-colors font-medium shadow-sm min-h-[44px] flex items-center gap-1"
+                            >
+                              📢 Send to All
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
