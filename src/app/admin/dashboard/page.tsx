@@ -24,7 +24,7 @@ interface CustomerInfo {
   name: string
   roomNumber: string
   phoneNumber: string
-  deliveryType: 'pickup'
+  deliveryType: 'pickup' | 'delivery'
   deliveryAddress?: string
 }
 

@@ -1,0 +1,15 @@
+   Creating an optimized production build ...
+ Γ£ô Compiled successfully
+   Linting and checking validity of types ...
+Failed to compile.
+
+./src/app/admin/dashboard/page.tsx:1055:48
+Type error: This comparison appears to be unintentional because the types '"pickup"' and '"delivery"' have no overlap.
+
+  1053 |                     <p><strong>Customer:</strong> {order.customer.name}</p>
+  1054 |                     <p><strong>Phone:</strong> {order.customer.phoneNumber}</p>
+> 1055 |                     <p><strong>Type:</strong> {order.customer.deliveryType === 'delivery' ? '≡ƒÜÜ Delivery' : '≡ƒÅâΓÇìΓÖé∩╕Å Pickup'}</p>
+       |                                                ^
+  1056 |                     {order.customer.deliveryType === 'delivery' && order.customer.deliveryAddress && (
+  1057 |                       <p><strong>Address:</strong> {order.customer.deliveryAddress}</p>
+  1058 |                     )}
