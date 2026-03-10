@@ -40,6 +40,11 @@ public class Order {
     @Column(nullable = false)
     private String status = "pending"; // pending, preparing, ready, completed
 
+    @Column(nullable = false)
+    private String paymentStatus = "unpaid"; // unpaid, paid, failed
+
+    private String paymentId; // PayFast payment reference
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 
@@ -164,5 +169,21 @@ public class Order {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getPaymentStatus() {
+        return paymentStatus;
+    }
+
+    public void setPaymentStatus(String paymentStatus) {
+        this.paymentStatus = paymentStatus;
+    }
+
+    public String getPaymentId() {
+        return paymentId;
+    }
+
+    public void setPaymentId(String paymentId) {
+        this.paymentId = paymentId;
     }
 }

@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS orders (
   items JSONB NOT NULL,
   total DECIMAL(10, 2) NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'preparing', 'ready', 'completed', 'cancelled')),
-  delivery_type TEXT NOT NULL CHECK (delivery_type IN ('pickup', 'delivery')),
+  delivery_type TEXT NOT NULL CHECK (delivery_type IN ('pickup')),
   delivery_address TEXT,
   instructions TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

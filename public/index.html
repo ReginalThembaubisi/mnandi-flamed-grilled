@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mnandi Flamed Grilled - Delicious Food Delivered</title>
+    <title>Mnandi Flamed Grilled - Delicious Food</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
+
 <body>
     <!-- Navigation -->
     <nav>
@@ -28,7 +30,7 @@
     <section class="hero">
         <div>
             <h1 class="fade-in">Welcome to Mn and i Flamed Grilled</h1>
-            <p>Delicious flame-grilled food delivered to your dorm room</p>
+            <p>Delicious flame-grilled food ready for pickup</p>
             <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 2rem;">
                 <a href="menu.html" class="btn btn-primary">Order Now</a>
                 <a href="#about" class="btn btn-secondary">Learn More</a>
@@ -52,11 +54,12 @@
         <div class="card-grid">
             <div class="card fade-in">
                 <h3>🔥 Flame-Grilled Perfection</h3>
-                <p>Every item is expertly flame-grilled to perfection, delivering that authentic smoky flavor you crave.</p>
+                <p>Every item is expertly flame-grilled to perfection, delivering that authentic smoky flavor you crave.
+                </p>
             </div>
             <div class="card fade-in">
                 <h3>⚡ Fast Delivery</h3>
-                <p>Quick delivery straight to your room. Hot, fresh, and ready to enjoy!</p>
+                <p>Quick and easy pickup. Hot, fresh, and ready to enjoy!</p>
             </div>
             <div class="card fade-in">
                 <h3>💰 Student-Friendly Prices</h3>
@@ -101,11 +104,11 @@
             const statusCard = document.getElementById('business-status');
             try {
                 const status = await api.getBusinessStatus();
-                
+
                 const isOpen = status.isOpen;
                 const statusColor = isOpen ? 'var(--success)' : 'var(--danger)';
                 const statusText = isOpen ? 'OPEN' : 'CLOSED';
-                
+
                 statusCard.innerHTML = `
                     <div style="display: flex; align-items: center; justify-content: center; gap: 1rem; flex-wrap: wrap;">
                         <div>
@@ -133,15 +136,15 @@
             const container = document.getElementById('popular-items');
             try {
                 const menuItems = await api.getMenu();
-                
+
                 // Show first 3 available items
                 const popularItems = menuItems.filter(item => item.available).slice(0, 3);
-                
+
                 if (popularItems.length === 0) {
                     container.innerHTML = '<p style="text-align: center; color: white;">No items available at the moment.</p>';
                     return;
                 }
-                
+
                 container.innerHTML = `
                     <div class="card-grid">
                         ${popularItems.map(item => `
@@ -168,7 +171,7 @@
         // Add to cart function
         function addToCart(name, price, imageUrl) {
             cart.add({ name, price, imageUrl });
-            
+
             // Show success message
             const message = document.createElement('div');
             message.className = 'alert alert-success';
@@ -178,11 +181,12 @@
             message.style.zIndex = '9999';
             message.innerHTML = `<strong>Added to cart!</strong> ${name}`;
             document.body.appendChild(message);
-            
+
             setTimeout(() => {
                 message.remove();
             }, 2000);
         }
     </script>
 </body>
+
 </html>

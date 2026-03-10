@@ -85,7 +85,7 @@ export default function CheckoutPage() {
   }
 
   const subtotal = calculateCartTotal(cartItems)
-  const deliveryFee = customerInfo.deliveryType === 'delivery' ? config.business.defaultDeliveryFee : 0
+  const deliveryFee = 0
   const totalPrice = subtotal + deliveryFee
 
   const handleSubmitOrder = () => {
@@ -94,22 +94,17 @@ export default function CheckoutPage() {
     const phoneValidation = validateAndSanitizePhone(customerInfo.phoneNumber)
     const roomValidation = validateAndSanitizeRoomNumber(customerInfo.roomNumber)
 
-    // Validate address if delivery
-    let addressValidation: { valid: boolean; sanitized: string; error?: string } = { valid: true, sanitized: customerInfo.deliveryAddress || '' }
-    if (customerInfo.deliveryType === 'delivery') {
-      addressValidation = validateAndSanitizeAddress(customerInfo.deliveryAddress || '', true)
-    }
+    // Address validation no longer needed for pickup only
 
     // Validate instructions
     const instructionsValidation = validateAndSanitizeInstructions(customerInfo.instructions || '')
 
     // Check if all validations pass
-    if (!nameValidation.valid || !phoneValidation.valid || !roomValidation.valid || !addressValidation.valid || !instructionsValidation.valid) {
+    if (!nameValidation.valid || !phoneValidation.valid || !roomValidation.valid || !instructionsValidation.valid) {
       const errors = [
         nameValidation.error,
         phoneValidation.error,
         roomValidation.error,
-        addressValidation.error,
         instructionsValidation.error
       ].filter((error): error is string => Boolean(error))
 
@@ -120,10 +115,8 @@ export default function CheckoutPage() {
     // Create sanitized customer info
     const sanitizedCustomerInfo: CustomerInfo = {
       name: nameValidation.sanitized,
-      phoneNumber: phoneValidation.sanitized,
-      roomNumber: roomValidation.sanitized,
-      deliveryType: customerInfo.deliveryType,
-      deliveryAddress: addressValidation.sanitized || undefined,
+      deliveryType: 'pickup',
+      deliveryAddress: undefined,
       instructions: instructionsValidation.sanitized || undefined
     }
 
@@ -152,7 +145,7 @@ export default function CheckoutPage() {
             customerName: sanitizedCustomerInfo.name,
             customerPhone: sanitizedCustomerInfo.phoneNumber,
             customerRoom: sanitizedCustomerInfo.roomNumber,
-            customerResidence: sanitizedCustomerInfo.deliveryAddress || 'Pickup',
+            customerResidence: 'Pickup',
             items: safeJsonStringify(cartItems),
             total: totalPrice,
             notes: sanitizedCustomerInfo.instructions || ''
@@ -181,8 +174,7 @@ export default function CheckoutPage() {
 
   const isFormValid = customerInfo.name.trim() &&
     customerInfo.roomNumber.trim() &&
-    customerInfo.phoneNumber.trim() &&
-    (customerInfo.deliveryType === 'pickup' || (customerInfo.deliveryAddress && customerInfo.deliveryAddress.trim()))
+    customerInfo.phoneNumber.trim()
 
   if (loading) {
     return (
@@ -258,8 +250,8 @@ export default function CheckoutPage() {
                   <div className="flex justify-between">
                     <span>Type:</span>
                     <span className="text-gray-900 font-semibold flex items-center gap-2">
-                      <Icon name={customerInfo.deliveryType === 'delivery' ? 'package' : 'location'} size={16} />
-                      {customerInfo.deliveryType === 'delivery' ? 'Delivery' : 'Pickup'}
+                      <Icon name="location" size={16} />
+                      Pickup
                     </span>
                   </div>
                   {customerInfo.instructions && (
@@ -276,7 +268,7 @@ export default function CheckoutPage() {
               </div>
 
               <p className="text-gray-500 mb-8">
-                It will be ready soon! We'll contact you when it's ready for {customerInfo.deliveryType === 'delivery' ? 'delivery' : 'pickup'}.
+                It will be ready soon! We'll contact you when it's ready for pickup.
               </p>
 
               <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-8 text-left">
@@ -394,214 +386,150 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* Delivery Options */}
-              <div className="mt-8">
-                <div className="flex items-center gap-3 mb-6">
-                  <Icon name="package" size={20} className="text-orange-500" />
-                  <h3 className="text-xl font-bold text-gray-900">Delivery Options</h3>
-                </div>
-                <div className="space-y-4">
-                  <label className="flex items-center gap-4 p-4 bg-orange-50 border-2 border-orange-100 rounded-xl cursor-pointer hover:border-orange-400 transition-all">
-                    <input
-                      type="radio"
-                      name="deliveryType"
-                      value="pickup"
-                      checked={customerInfo.deliveryType === 'pickup'}
-                      onChange={(e) => handleInputChange('deliveryType', e.target.value as 'pickup' | 'delivery')}
-                      className="w-5 h-5 text-orange-500 focus:ring-orange-400"
-                    />
-                    <div className="flex items-center gap-3 flex-1">
-                      <Icon name="location" size={20} className="text-gray-500" />
-                      <div>
-                        <div className="text-gray-900 font-semibold">Pickup</div>
-                        <div className="text-gray-500 text-sm">Free</div>
-                      </div>
-                    </div>
-                  </label>
 
-                  <label className="flex items-center gap-4 p-4 bg-orange-50 border-2 border-orange-100 rounded-xl cursor-pointer hover:border-orange-400 transition-all">
-                    <input
-                      type="radio"
-                      name="deliveryType"
-                      value="delivery"
-                      checked={customerInfo.deliveryType === 'delivery'}
-                      onChange={(e) => handleInputChange('deliveryType', e.target.value as 'pickup' | 'delivery')}
-                      className="w-5 h-5 text-orange-500 focus:ring-orange-400"
-                    />
-                    <div className="flex items-center gap-3 flex-1">
-                      <Icon name="package" size={20} className="text-gray-500" />
-                      <div>
-                        <div className="text-gray-900 font-semibold">Delivery</div>
-                        <div className="text-gray-500 text-sm">R10 delivery fee</div>
-                      </div>
-                    </div>
-                  </label>
-                </div>
 
-                {/* Delivery Address */}
-                {customerInfo.deliveryType === 'delivery' && (
-                  <div className="mt-6">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Delivery Address *
-                    </label>
-                    <textarea
-                      value={customerInfo.deliveryAddress || ''}
-                      onChange={(e) => handleInputChange('deliveryAddress', e.target.value)}
-                      placeholder="e.g., Inyatsi Building, F09-7"
-                      className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 h-24 resize-none transition-all"
-                      required={customerInfo.deliveryType === 'delivery'}
-                    />
-                  </div>
-                )}
+              {/* Order Instructions */}
+              <div className="mt-6">
+                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <Icon name="edit" size={16} />
+                  Special Instructions (Optional)
+                </label>
+                <textarea
+                  value={customerInfo.instructions || ''}
+                  onChange={(e) => handleInputChange('instructions', e.target.value)}
+                  placeholder="How do you want your meat? (e.g., 'Normal', 'Mild', 'Hot', 'Extra hot', 'Call when ready')"
+                  className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 h-24 resize-none transition-all"
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  We'll do our best to accommodate your requests!
+                </p>
+              </div>
+            </div>
 
-                {/* Order Instructions */}
-                <div className="mt-6">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                    <Icon name="edit" size={16} />
-                    Special Instructions (Optional)
-                  </label>
-                  <textarea
-                    value={customerInfo.instructions || ''}
-                    onChange={(e) => handleInputChange('instructions', e.target.value)}
-                    placeholder="How do you want your meat? (e.g., 'Normal', 'Mild', 'Hot', 'Extra hot', 'Call when ready')"
-                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 h-24 resize-none transition-all"
-                  />
-                  <p className="text-xs text-gray-400 mt-2">
-                    We'll do our best to accommodate your requests!
+            <div className="mt-8 space-y-4">
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <Icon name="notification" size={20} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-orange-700">
+                    <strong>Note:</strong> This information will be saved for future orders to make checkout faster!
                   </p>
                 </div>
               </div>
 
-              <div className="mt-8 space-y-4">
-                <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl">
-                  <div className="flex items-start gap-3">
-                    <Icon name="notification" size={20} className="text-orange-500 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-orange-700">
-                      <strong>Note:</strong> This information will be saved for future orders to make checkout faster!
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-                  <div className="flex items-start gap-3">
-                    <Icon name="warning" size={20} className="text-yellow-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h4 className="font-bold text-yellow-700 mb-2">Cancellation Policy</h4>
-                      <ul className="text-sm text-yellow-700 space-y-1.5">
-                        <li className="flex items-start gap-2">
-                          <span>•</span>
-                          <span>You can cancel your order before we start cooking</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span>•</span>
-                          <span>Call us to cancel anytime before cooking starts</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span>•</span>
-                          <span>Once cooking starts, cancellation is not possible</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span>•</span>
-                          <span>We'll contact you if there are any issues</span>
-                        </li>
-                      </ul>
-                    </div>
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <Icon name="warning" size={20} className="text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-yellow-700 mb-2">Cancellation Policy</h4>
+                    <ul className="text-sm text-yellow-700 space-y-1.5">
+                      <li className="flex items-start gap-2">
+                        <span>•</span>
+                        <span>You can cancel your order before we start cooking</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span>•</span>
+                        <span>Call us to cancel anytime before cooking starts</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span>•</span>
+                        <span>Once cooking starts, cancellation is not possible</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span>•</span>
+                        <span>We'll contact you if there are any issues</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Order Summary */}
-            <div className="lg:col-span-1">
-              <div className="sticky top-8 bg-white border border-orange-100 rounded-2xl shadow-md p-6 sm:p-8">
-                <div className="flex items-center gap-3 mb-6">
-                  <Icon name="orders" size={24} className="text-orange-500" />
-                  <h2 className="text-2xl font-bold text-gray-900">Order Summary</h2>
-                </div>
+          {/* Order Summary */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-8 bg-white border border-orange-100 rounded-2xl shadow-md p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <Icon name="orders" size={24} className="text-orange-500" />
+                <h2 className="text-2xl font-bold text-gray-900">Order Summary</h2>
+              </div>
 
-                <div className="space-y-4 mb-6">
-                  {cartItems.map((item) => (
-                    <div key={item.id} className="flex items-center gap-4 p-3 bg-orange-50 border border-orange-100 rounded-xl">
-                      {item.image ? (
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          className="w-14 h-14 object-cover rounded-lg"
-                          onError={(e) => { e.currentTarget.style.display = 'none' }}
-                        />
-                      ) : (
-                        <div className="w-14 h-14 bg-orange-100 rounded-lg flex items-center justify-center">
-                          <Icon name="menu" size={24} className="text-orange-300" />
+              <div className="space-y-4 mb-6">
+                {cartItems.map((item) => (
+                  <div key={item.id} className="flex items-center gap-4 p-3 bg-orange-50 border border-orange-100 rounded-xl">
+                    {item.image ? (
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="w-14 h-14 object-cover rounded-lg"
+                        onError={(e) => { e.currentTarget.style.display = 'none' }}
+                      />
+                    ) : (
+                      <div className="w-14 h-14 bg-orange-100 rounded-lg flex items-center justify-center">
+                        <Icon name="menu" size={24} className="text-orange-300" />
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 truncate">{item.name}</h3>
+                      {item.isCombo && item.selectedSide && (
+                        <div className="flex items-center gap-1 text-sm text-orange-600">
+                          <Icon name="check" size={14} />
+                          <span>Side: {item.selectedSide}</span>
                         </div>
                       )}
-
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate">{item.name}</h3>
-                        {item.isCombo && item.selectedSide && (
-                          <div className="flex items-center gap-1 text-sm text-orange-600">
-                            <Icon name="check" size={14} />
-                            <span>Side: {item.selectedSide}</span>
-                          </div>
-                        )}
-                        <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
-                      </div>
-
-                      <div className="text-right">
-                        <p className="font-bold text-orange-500">
-                          {formatPrice(parseFloat(item.price) * item.quantity)}
-                        </p>
-                      </div>
+                      <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
                     </div>
-                  ))}
-                </div>
 
-                <div className="border-t border-gray-100 pt-6 space-y-3">
-                  <div className="flex justify-between items-center text-gray-500">
-                    <span>Subtotal:</span>
-                    <span className="text-gray-900 font-semibold">{formatPrice(subtotal)}</span>
-                  </div>
-                  {deliveryFee > 0 && (
-                    <div className="flex justify-between items-center text-gray-500">
-                      <span>Delivery Fee:</span>
-                      <span className="text-gray-900 font-semibold">{formatPrice(deliveryFee)}</span>
+                    <div className="text-right">
+                      <p className="font-bold text-orange-500">
+                        {formatPrice(parseFloat(item.price) * item.quantity)}
+                      </p>
                     </div>
-                  )}
-                  <div className="flex justify-between items-center text-xl font-bold border-t border-gray-100 pt-3">
-                    <span className="text-gray-900">Total:</span>
-                    <span className="text-orange-500 text-2xl">{formatPrice(totalPrice)}</span>
                   </div>
-                </div>
-
-                <Button
-                  onClick={handleSubmitOrder}
-                  disabled={!isFormValid}
-                  variant="primary"
-                  size="lg"
-                  className="w-full mt-6 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-full shadow-lg shadow-orange-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isFormValid ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Icon name="check" size={20} />
-                      Place Order
-                    </span>
-                  ) : (
-                    <span className="flex items-center justify-center gap-2">
-                      <Icon name="warning" size={20} />
-                      Complete Form First
-                    </span>
-                  )}
-                </Button>
-
-                {!isFormValid && (
-                  <p className="text-sm text-red-500 mt-3 text-center">
-                    Please fill in all required fields
-                  </p>
-                )}
+                ))}
               </div>
+
+              <div className="border-t border-gray-100 pt-6 space-y-3">
+                <div className="flex justify-between items-center text-gray-500">
+                  <span>Subtotal:</span>
+                  <span className="text-gray-900 font-semibold">{formatPrice(subtotal)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xl font-bold border-t border-gray-100 pt-3">
+                  <span className="text-gray-900">Total:</span>
+                  <span className="text-orange-500 text-2xl">{formatPrice(totalPrice)}</span>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleSubmitOrder}
+                disabled={!isFormValid}
+                variant="primary"
+                size="lg"
+                className="w-full mt-6 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-full shadow-lg shadow-orange-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isFormValid ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Icon name="check" size={20} />
+                    Place Order
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <Icon name="warning" size={20} />
+                    Complete Form First
+                  </span>
+                )}
+              </Button>
+
+              {!isFormValid && (
+                <p className="text-sm text-red-500 mt-3 text-center">
+                  Please fill in all required fields
+                </p>
+              )}
             </div>
           </div>
         </div>
       </div>
     </div>
+    </div >
   )
 }

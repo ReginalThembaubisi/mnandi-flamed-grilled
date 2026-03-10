@@ -24,7 +24,7 @@ interface CustomerInfo {
   name: string
   roomNumber: string
   phoneNumber: string
-  deliveryType: 'pickup' | 'delivery'
+  deliveryType: 'pickup'
   deliveryAddress?: string
 }
 
@@ -115,8 +115,8 @@ export default function AdminDashboard() {
           name: r.customerName,
           roomNumber: r.customerRoom,
           phoneNumber: r.customerPhone,
-          deliveryType: (r.customerResidence && r.customerResidence !== 'Pickup' ? 'delivery' : 'pickup') as 'pickup' | 'delivery',
-          deliveryAddress: r.customerResidence !== 'Pickup' ? r.customerResidence : undefined
+          deliveryType: 'pickup',
+          deliveryAddress: undefined
         },
         items: safeJsonParse<CartItem[]>(r.items, []),
         total: r.total,
@@ -230,13 +230,7 @@ export default function AdminDashboard() {
   // Send WhatsApp notification
   const sendWhatsAppNotification = (order: Order) => {
     try {
-      const deliveryInfo = order.customer.deliveryType === 'delivery'
-        ? `DELIVERY DETAILS:
-- Address: ${sanitizeText(order.customer.deliveryAddress || '')}
-- Customer: ${sanitizeText(order.customer.name)}
-
-Your order is ready for delivery! We'll be coming to deliver it soon.`
-        : `PICKUP DETAILS:
+      const pickupInfo = `PICKUP DETAILS:
 - Room: ${sanitizeText(order.customer.roomNumber)}
 - Customer: ${sanitizeText(order.customer.name)}
 
@@ -251,7 +245,7 @@ ${order.items.map(item => `- ${sanitizeText(item.name)} x${item.quantity}`).join
 
 TOTAL: R${order.total.toFixed(2)}
 
-${deliveryInfo}
+${pickupInfo}
 
 Thank you for choosing Mnandi Flame-Grilled!`
 
@@ -276,8 +270,8 @@ Thank you for choosing Mnandi Flame-Grilled!`
           name: r.customerName,
           roomNumber: r.customerRoom,
           phoneNumber: r.customerPhone,
-          deliveryType: (r.customerResidence && r.customerResidence !== 'Pickup' ? 'delivery' : 'pickup') as 'pickup' | 'delivery',
-          deliveryAddress: r.customerResidence !== 'Pickup' ? r.customerResidence : undefined
+          deliveryType: 'pickup',
+          deliveryAddress: undefined
         },
         items: safeJsonParse<CartItem[]>(r.items, []),
         total: r.total,

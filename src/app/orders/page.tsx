@@ -22,7 +22,7 @@ interface CustomerInfo {
   name: string
   roomNumber: string
   phoneNumber: string
-  deliveryType?: 'pickup' | 'delivery'
+  deliveryType?: 'pickup'
   deliveryAddress?: string
   instructions?: string
 }
@@ -51,8 +51,8 @@ export default function OrdersPage() {
         name: r.customerName,
         roomNumber: r.customerRoom,
         phoneNumber: r.customerPhone,
-        deliveryType: (r.customerResidence && r.customerResidence !== 'Pickup' ? 'delivery' : 'pickup') as 'pickup' | 'delivery',
-        deliveryAddress: r.customerResidence !== 'Pickup' ? r.customerResidence : undefined,
+        deliveryType: 'pickup',
+        deliveryAddress: undefined,
         instructions: r.notes,
       },
       items: safeJsonParse<CartItem[]>(r.items, []),
@@ -131,11 +131,9 @@ export default function OrdersPage() {
 
       const sanitizedPhone = sanitizePhoneForWhatsApp(phoneNumber)
 
-      const deliveryInfo = order.customer.deliveryType === 'delivery'
-        ? `🚚 *Delivery Details:*\n• Address: ${sanitizeText(order.customer.deliveryAddress || '')}\n• Customer: ${sanitizeText(order.customer.name)}\n\n✅ Your order is ready for delivery! We'll be coming to deliver it soon.`
-        : `📍 *Pickup Details:*\n• Room: ${sanitizeText(order.customer.roomNumber)}\n• Customer: ${sanitizeText(order.customer.name)}\n\n✅ Your order is ready for pickup! Please come and collect it.`
+      const pickupInfo = `📍 *Pickup Details:*\n• Room: ${sanitizeText(order.customer.roomNumber)}\n• Customer: ${sanitizeText(order.customer.name)}\n\n✅ Your order is ready for pickup! Please come and collect it.`
 
-      const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*\n\nOrder #${sanitizeText(order.orderId.slice(-6))}\n\n📋 *Order Details:*\n${order.items.map(item => `• ${sanitizeText(item.name)} x${item.quantity}`).join('\n')}\n\n💰 *Total: R${order.total.toFixed(2)}*\n\n${deliveryInfo}\n\nThank you for choosing Mnandi Flame-Grilled! 🎉`
+      const message = `🍽️ *Your Mnandi Flame-Grilled Order is Ready!*\n\nOrder #${sanitizeText(order.orderId.slice(-6))}\n\n📋 *Order Details:*\n${order.items.map(item => `• ${sanitizeText(item.name)} x${item.quantity}`).join('\n')}\n\n💰 *Total: R${order.total.toFixed(2)}*\n\n${pickupInfo}\n\nThank you for choosing Mnandi Flame-Grilled! 🎉`
 
       const sanitizedMessage = sanitizeMessageForWhatsApp(message)
       const encodedMessage = encodeURIComponent(sanitizedMessage)
@@ -208,15 +206,15 @@ export default function OrdersPage() {
           <div className="flex flex-wrap gap-2">
             {[
               { key: 'new', label: 'Active Orders', emoji: '🔄' },
-              { key: 'ready', label: 'Ready to Deliver', emoji: '✅' },
+              { key: 'ready', label: 'Ready for Pickup', emoji: '✅' },
               { key: 'completed', label: 'Completed', emoji: '🎉' }
             ].map(({ key, label, emoji }) => (
               <button
                 key={key}
                 onClick={() => setFilter(key as any)}
                 className={`px-4 py-2.5 rounded-lg transition-colors font-medium min-h-[44px] ${filter === key
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
               >
                 <span className="mr-2">{emoji}</span>
@@ -234,7 +232,7 @@ export default function OrdersPage() {
               {filter === 'new'
                 ? "No active orders to manage."
                 : filter === 'ready'
-                  ? "No orders ready for delivery."
+                  ? "No orders ready for pickup."
                   : "No completed orders."
               }
             </p>
@@ -270,20 +268,11 @@ export default function OrdersPage() {
                     <p><strong>Name:</strong> {order.customer.name}</p>
                     <p><strong>Phone:</strong> {order.customer.phoneNumber}</p>
                     <p><strong>Type:</strong>
-                      <span className={`ml-1 px-2 py-1 rounded text-xs ${order.customer.deliveryType === 'delivery'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-green-100 text-green-800'
-                        }`}>
-                        {order.customer.deliveryType === 'delivery' ? '🚚 Delivery' : '🏃‍♂️ Pickup'}
+                      <span className={`ml-1 px-2 py-1 rounded text-xs bg-green-100 text-green-800`}>
+                        🏃‍♂️ Pickup
                       </span>
                     </p>
-                    <p><strong>
-                      {order.customer.deliveryType === 'delivery' ? 'Address:' : 'Room:'}
-                    </strong> {
-                        order.customer.deliveryType === 'delivery'
-                          ? order.customer.deliveryAddress
-                          : order.customer.roomNumber
-                      }</p>
+                    <p><strong>Room:</strong> {order.customer.roomNumber}</p>
                     {order.customer.instructions && (
                       <p className="md:col-span-2"><strong>Instructions:</strong> {order.customer.instructions}</p>
                     )}
@@ -368,7 +357,7 @@ export default function OrdersPage() {
                         onClick={() => updateOrderStatus(order.orderId, 'completed')}
                         className="bg-gray-600 text-white px-4 py-2.5 rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium min-h-[44px] flex-1 sm:flex-none"
                       >
-                        {order.customer.deliveryType === 'delivery' ? '🚚 Mark Delivered' : '🏃‍♂️ Mark Collected'}
+                        🏃‍♂️ Mark Collected
                       </button>
                       <button
                         onClick={() => sendWhatsAppNotification(order)}
@@ -380,7 +369,7 @@ export default function OrdersPage() {
                   )}
                   {order.status === 'completed' && (
                     <span className="text-gray-500 text-sm px-4 py-2">
-                      ✅ {order.customer.deliveryType === 'delivery' ? 'Order delivered' : 'Order collected'}
+                      ✅ Order collected
                     </span>
                   )}
                   {order.status === 'cancelled' && (
