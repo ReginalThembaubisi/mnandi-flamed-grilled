@@ -60,24 +60,24 @@ public class PayFastService {
                 .toPlainString();
 
         Map<String, String> data = new LinkedHashMap<>();
-        data.put("merchant_id", merchantId);
-        data.put("merchant_key", merchantKey);
-        data.put("return_url", returnUrl + "?order_id=" + order.getId()
+        data.put("merchant_id", cleanValue(merchantId));
+        data.put("merchant_key", cleanValue(merchantKey));
+        data.put("return_url", cleanValue(returnUrl) + "?order_id=" + order.getId()
                 + "&confirmation=" + order.getConfirmationNumber());
-        data.put("cancel_url", cancelUrl + "?order_id=" + order.getId());
-        data.put("notify_url", notifyUrl);
+        data.put("cancel_url", cleanValue(cancelUrl) + "?order_id=" + order.getId());
+        data.put("notify_url", cleanValue(notifyUrl));
 
         // Buyer info
         String[] nameParts = order.getCustomerName().trim().split(" ", 2);
-        data.put("name_first", nameParts[0]);
-        data.put("name_last", nameParts.length > 1 ? nameParts[1] : "-");
+        data.put("name_first", cleanAscii(nameParts[0]));
+        data.put("name_last", cleanAscii(nameParts.length > 1 ? nameParts[1] : "-"));
 
         // Order info
         data.put("m_payment_id", String.valueOf(order.getId()));
         data.put("amount", amount);
-        data.put("item_name", "Mnandi Order " + order.getConfirmationNumber());
-        data.put("item_description", "Food order – " + order.getCustomerResidence()
-                + " Room " + order.getCustomerRoom());
+        data.put("item_name", cleanAscii("Mnandi Order " + order.getConfirmationNumber()));
+        data.put("item_description", cleanAscii("Food order - " + order.getCustomerResidence()
+                + " Room " + order.getCustomerRoom()));
 
         // Generate and append signature
         String signature = generateSignature(data, passphrase.isBlank() ? null : passphrase);
@@ -170,5 +170,18 @@ public class PayFastService {
         } catch (Exception e) {
             throw new RuntimeException("MD5 hashing failed", e);
         }
+    }
+
+    private String cleanValue(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim();
+    }
+
+    private String cleanAscii(String value) {
+        String clean = cleanValue(value);
+        // Avoid hidden unicode differences between signer/browser/gateway.
+        return clean.replaceAll("[^\\x20-\\x7E]", "");
     }
 }
