@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { orderAPI } from "@/lib/javaAPI";
+import { orderAPI, payfastAPI } from "@/lib/javaAPI";
 import { CartItem, CustomerInfo } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/IconMap";
@@ -34,8 +34,10 @@ export default function CheckoutPage() {
     instructions: "",
   });
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -95,7 +97,29 @@ export default function CheckoutPage() {
   const deliveryFee = 0;
   const totalPrice = subtotal + deliveryFee;
 
-  const handleSubmitOrder = () => {
+  const submitPaymentForm = (
+    paymentUrl: string,
+    formData: Record<string, string>,
+  ) => {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = paymentUrl;
+
+    Object.entries(formData).forEach(([key, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+  };
+
+  const handleSubmitOrder = async () => {
+    if (isSubmitting) return;
+
     // Validate all inputs
     const nameValidation = validateAndSanitizeName(customerInfo.name);
     const phoneValidation = validateAndSanitizePhone(customerInfo.phoneNumber);
@@ -128,6 +152,9 @@ export default function CheckoutPage() {
       return;
     }
 
+    setIsSubmitting(true);
+    setPaymentError(null);
+
     // Create sanitized customer info
     const sanitizedCustomerInfo: CustomerInfo = {
       name: nameValidation.sanitized,
@@ -144,56 +171,38 @@ export default function CheckoutPage() {
       safeJsonStringify(sanitizedCustomerInfo),
     );
 
-    // Generate order confirmation number
+    // Generate client-side reference while creating order
     const newOrderNumber = generateOrderNumber(config.order.confirmationPrefix);
     setOrderNumber(newOrderNumber);
 
-    // Create order summary with sanitized data
-    const orderSummary = {
-      customer: sanitizedCustomerInfo,
-      items: cartItems,
-      total: totalPrice,
-      timestamp: new Date().toISOString(),
-      orderId: newOrderNumber,
-      confirmationNumber: newOrderNumber,
-      status: "pending" as const,
-    };
+    try {
+      const orderData = {
+        customerName: sanitizedCustomerInfo.name,
+        customerPhone: sanitizedCustomerInfo.phoneNumber,
+        customerRoom: sanitizedCustomerInfo.roomNumber,
+        customerResidence: "Pickup",
+        items: safeJsonStringify(cartItems),
+        total: totalPrice,
+        notes: sanitizedCustomerInfo.instructions || "",
+      };
 
-    // Save to Java Spring Boot backend
-    (async () => {
-      try {
-        const orderData = {
-          customerName: sanitizedCustomerInfo.name,
-          customerPhone: sanitizedCustomerInfo.phoneNumber,
-          customerRoom: sanitizedCustomerInfo.roomNumber,
-          customerResidence: "Pickup",
-          items: safeJsonStringify(cartItems),
-          total: totalPrice,
-          notes: sanitizedCustomerInfo.instructions || "",
-        };
+      const createdOrder = await orderAPI.create(orderData);
+      setOrderNumber(createdOrder.confirmationNumber);
 
-        const createdOrder = await orderAPI.create(orderData);
+      const paymentData = await payfastAPI.initiate(createdOrder.id);
 
-        // Update order number with the one from backend
-        setOrderNumber(createdOrder.confirmationNumber);
+      // Clear cart before leaving site for hosted payment
+      localStorage.removeItem("cart");
 
-        console.log("Order created successfully:", createdOrder);
-      } catch (e) {
-        console.error("Failed to create order in backend:", e);
-        // Fallback to local storage if backend insert fails
-        const existing = safeJsonParse<any[]>(
-          localStorage.getItem("orders") || "[]",
-          [],
-        );
-        existing.push(orderSummary);
-        localStorage.setItem("orders", safeJsonStringify(existing));
-      }
-    })();
-
-    // Clear cart
-    localStorage.removeItem("cart");
-
-    setOrderSubmitted(true);
+      submitPaymentForm(paymentData.paymentUrl, paymentData.formData);
+      return;
+    } catch (e) {
+      console.error("Failed to process online payment:", e);
+      setPaymentError(
+        "We couldn't start online payment right now. Please try again in a moment.",
+      );
+      setIsSubmitting(false);
+    }
   };
 
   const isFormValid =
@@ -269,9 +278,7 @@ export default function CheckoutPage() {
                     [],
                   ) as any[]).slice(-1)[0]?.confirmationNumber || "SHI-000000"}
                 </p>
-                <p className="text-sm text-orange-600/80">
-                  Save this number for reference!
-                </p>
+                <p className="text-sm text-orange-600/80">Save this number for reference!</p>
               </div>
 
               <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-6 text-left">
@@ -314,8 +321,7 @@ export default function CheckoutPage() {
               </div>
 
               <p className="text-gray-500 mb-8">
-                It will be ready soon! We'll contact you when it's ready for
-                pickup.
+                It will be ready soon! We'll contact you when it's ready for pickup.
               </p>
 
               <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-8 text-left">
@@ -605,15 +611,21 @@ export default function CheckoutPage() {
 
                 <Button
                   onClick={handleSubmitOrder}
-                  disabled={!isFormValid}
+                  disabled={!isFormValid || isSubmitting}
+                  isLoading={isSubmitting}
                   variant="primary"
                   size="lg"
                   className="w-full mt-6 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-full shadow-lg shadow-orange-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isFormValid ? (
+                  {isSubmitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Icon name="notification" size={20} />
+                      Redirecting to Secure Payment...
+                    </span>
+                  ) : isFormValid ? (
                     <span className="flex items-center justify-center gap-2">
                       <Icon name="check" size={20} />
-                      Place Order
+                      Pay Online
                     </span>
                   ) : (
                     <span className="flex items-center justify-center gap-2">
@@ -627,6 +639,10 @@ export default function CheckoutPage() {
                   <p className="text-sm text-red-500 mt-3 text-center">
                     Please fill in all required fields
                   </p>
+                )}
+
+                {paymentError && (
+                  <p className="text-sm text-red-500 mt-3 text-center">{paymentError}</p>
                 )}
               </div>
             </div>

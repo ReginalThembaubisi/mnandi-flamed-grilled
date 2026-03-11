@@ -28,6 +28,11 @@ export interface OrderResponse extends Order {
     updatedAt: string;
 }
 
+export interface PayFastInitiateResponse {
+    paymentUrl: string;
+    formData: Record<string, string>;
+}
+
 // Order API
 export const orderAPI = {
     // Create a new order
@@ -251,9 +256,19 @@ export const configAPI = {
     },
 };
 
+// PayFast API
+export const payfastAPI = {
+    async initiate(orderId: number): Promise<PayFastInitiateResponse> {
+        const response = await fetch(`${API_BASE_URL}/payfast/initiate/${orderId}`);
+        if (!response.ok) throw new Error('Failed to initiate online payment');
+        return await response.json();
+    },
+};
+
 export default {
     orders: orderAPI,
     customers: customerAPI,
     menu: menuAPI,
     config: configAPI,
+    payfast: payfastAPI,
 };
