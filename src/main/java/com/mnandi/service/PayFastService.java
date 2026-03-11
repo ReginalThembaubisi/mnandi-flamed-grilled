@@ -97,6 +97,7 @@ public class PayFastService {
         // Build the query string from all fields EXCEPT "signature"
         String paramString = data.entrySet().stream()
                 .filter(e -> !e.getKey().equals("signature"))
+                .filter(e -> e.getValue() != null && !e.getValue().trim().isEmpty())
                 .map(e -> e.getKey() + "=" + encodeUrl(e.getValue()))
                 .collect(Collectors.joining("&"));
 
@@ -149,8 +150,9 @@ public class PayFastService {
         if (value == null)
             return "";
         try {
-            return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8)
-                    .replace("+", "%20");
+            // PayFast signatures are based on standard form-url-encoding.
+            // Keep '+' for spaces to match PayFast signature calculation.
+            return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8);
         } catch (Exception e) {
             return value;
         }
