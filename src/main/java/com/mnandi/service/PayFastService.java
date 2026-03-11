@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -94,10 +95,16 @@ public class PayFastService {
      * optionally append passphrase, then MD5 hash.
      */
     public String generateSignature(Map<String, String> data, String passphrase) {
-        // Build the query string from all fields EXCEPT "signature"
-        String paramString = data.entrySet().stream()
-                .filter(e -> !e.getKey().equals("signature"))
-                .filter(e -> e.getValue() != null && !e.getValue().trim().isEmpty())
+        // Build a deterministic query string from all fields EXCEPT "signature".
+        // Using sorted keys avoids map-order differences across runtimes.
+        Map<String, String> normalized = new TreeMap<>();
+        data.forEach((key, value) -> {
+            if (!"signature".equals(key) && value != null && !value.trim().isEmpty()) {
+                normalized.put(key, cleanValue(value));
+            }
+        });
+
+        String paramString = normalized.entrySet().stream()
                 .map(e -> e.getKey() + "=" + encodeUrl(e.getValue()))
                 .collect(Collectors.joining("&"));
 
