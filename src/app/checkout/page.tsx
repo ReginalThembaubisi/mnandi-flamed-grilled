@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { orderAPI, payfastAPI } from "@/lib/javaAPI";
+import { orderAPI } from "@/lib/javaAPI";
 import { CartItem, CustomerInfo } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/IconMap";
@@ -34,10 +34,8 @@ export default function CheckoutPage() {
     instructions: "",
   });
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
-  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -97,29 +95,7 @@ export default function CheckoutPage() {
   const deliveryFee = 0;
   const totalPrice = subtotal + deliveryFee;
 
-  const submitPaymentForm = (
-    paymentUrl: string,
-    formData: Record<string, string>,
-  ) => {
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = paymentUrl;
-
-    Object.entries(formData).forEach(([key, value]) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = key;
-      input.value = value;
-      form.appendChild(input);
-    });
-
-    document.body.appendChild(form);
-    form.submit();
-  };
-
   const handleSubmitOrder = async () => {
-    if (isSubmitting) return;
-
     // Validate all inputs
     const nameValidation = validateAndSanitizeName(customerInfo.name);
     const phoneValidation = validateAndSanitizePhone(customerInfo.phoneNumber);
@@ -151,9 +127,6 @@ export default function CheckoutPage() {
       alert(`Please fix the following errors:\n${errors.join("\n")}`);
       return;
     }
-
-    setIsSubmitting(true);
-    setPaymentError(null);
 
     // Create sanitized customer info
     const sanitizedCustomerInfo: CustomerInfo = {
@@ -189,19 +162,13 @@ export default function CheckoutPage() {
       const createdOrder = await orderAPI.create(orderData);
       setOrderNumber(createdOrder.confirmationNumber);
 
-      const paymentData = await payfastAPI.initiate(createdOrder.id);
-
-      // Clear cart before leaving site for hosted payment
+      // Online payment is temporarily disabled for production stability.
+      // Keep order placement flow active and show confirmation immediately.
       localStorage.removeItem("cart");
-
-      submitPaymentForm(paymentData.paymentUrl, paymentData.formData);
-      return;
+      setOrderSubmitted(true);
     } catch (e) {
-      console.error("Failed to process online payment:", e);
-      setPaymentError(
-        "We couldn't start online payment right now. Please try again in a moment.",
-      );
-      setIsSubmitting(false);
+      console.error("Failed to create order in backend:", e);
+      alert("We could not place your order right now. Please try again.");
     }
   };
 
@@ -611,21 +578,15 @@ export default function CheckoutPage() {
 
                 <Button
                   onClick={handleSubmitOrder}
-                  disabled={!isFormValid || isSubmitting}
-                  isLoading={isSubmitting}
+                  disabled={!isFormValid}
                   variant="primary"
                   size="lg"
                   className="w-full mt-6 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-full shadow-lg shadow-orange-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Icon name="notification" size={20} />
-                      Redirecting to Secure Payment...
-                    </span>
-                  ) : isFormValid ? (
+                  {isFormValid ? (
                     <span className="flex items-center justify-center gap-2">
                       <Icon name="check" size={20} />
-                      Pay Online
+                      Place Order
                     </span>
                   ) : (
                     <span className="flex items-center justify-center gap-2">
@@ -639,10 +600,6 @@ export default function CheckoutPage() {
                   <p className="text-sm text-red-500 mt-3 text-center">
                     Please fill in all required fields
                   </p>
-                )}
-
-                {paymentError && (
-                  <p className="text-sm text-red-500 mt-3 text-center">{paymentError}</p>
                 )}
               </div>
             </div>
