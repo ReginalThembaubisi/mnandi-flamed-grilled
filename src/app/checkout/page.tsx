@@ -92,7 +92,10 @@ export default function CheckoutPage() {
   };
 
   const subtotal = calculateCartTotal(cartItems);
-  const deliveryFee = 0;
+  const deliveryFee =
+    customerInfo.deliveryType === "delivery"
+      ? config.business.defaultDeliveryFee
+      : 0;
   const totalPrice = subtotal + deliveryFee;
 
   const handleSubmitOrder = async () => {
@@ -102,8 +105,10 @@ export default function CheckoutPage() {
     const roomValidation = validateAndSanitizeRoomNumber(
       customerInfo.roomNumber,
     );
-
-    // Address validation no longer needed for pickup only
+    const addressValidation =
+      customerInfo.deliveryType === "delivery"
+        ? validateAndSanitizeAddress(customerInfo.deliveryAddress || "")
+        : { valid: true, sanitized: "", error: undefined as string | undefined };
 
     // Validate instructions
     const instructionsValidation = validateAndSanitizeInstructions(
@@ -115,12 +120,14 @@ export default function CheckoutPage() {
       !nameValidation.valid ||
       !phoneValidation.valid ||
       !roomValidation.valid ||
+      !addressValidation.valid ||
       !instructionsValidation.valid
     ) {
       const errors = [
         nameValidation.error,
         phoneValidation.error,
         roomValidation.error,
+        addressValidation.error,
         instructionsValidation.error,
       ].filter((error): error is string => Boolean(error));
 
@@ -133,8 +140,11 @@ export default function CheckoutPage() {
       name: nameValidation.sanitized,
       phoneNumber: phoneValidation.sanitized,
       roomNumber: roomValidation.sanitized,
-      deliveryType: "pickup",
-      deliveryAddress: undefined,
+      deliveryType: customerInfo.deliveryType,
+      deliveryAddress:
+        customerInfo.deliveryType === "delivery"
+          ? addressValidation.sanitized
+          : undefined,
       instructions: instructionsValidation.sanitized || undefined,
     };
 
@@ -153,10 +163,17 @@ export default function CheckoutPage() {
         customerName: sanitizedCustomerInfo.name,
         customerPhone: sanitizedCustomerInfo.phoneNumber,
         customerRoom: sanitizedCustomerInfo.roomNumber,
-        customerResidence: "Pickup",
+        customerResidence:
+          sanitizedCustomerInfo.deliveryType === "delivery"
+            ? "Delivery"
+            : "Pickup",
         items: safeJsonStringify(cartItems),
         total: totalPrice,
-        notes: sanitizedCustomerInfo.instructions || "",
+        notes:
+          (sanitizedCustomerInfo.deliveryType === "delivery" &&
+          sanitizedCustomerInfo.deliveryAddress
+            ? `Delivery address: ${sanitizedCustomerInfo.deliveryAddress}\n`
+            : "") + (sanitizedCustomerInfo.instructions || ""),
       };
 
       const createdOrder = await orderAPI.create(orderData);
@@ -175,7 +192,9 @@ export default function CheckoutPage() {
   const isFormValid =
     customerInfo.name.trim() &&
     customerInfo.roomNumber.trim() &&
-    customerInfo.phoneNumber.trim();
+    customerInfo.phoneNumber.trim() &&
+    (customerInfo.deliveryType === "pickup" ||
+      (customerInfo.deliveryAddress || "").trim());
 
   if (loading) {
     return (
@@ -267,9 +286,20 @@ export default function CheckoutPage() {
                     <span>Type:</span>
                     <span className="text-gray-900 font-semibold flex items-center gap-2">
                       <Icon name="location" size={16} />
-                      Pickup
+                      {customerInfo.deliveryType === "delivery"
+                        ? "Delivery"
+                        : "Pickup"}
                     </span>
                   </div>
+                  {customerInfo.deliveryType === "delivery" &&
+                    customerInfo.deliveryAddress && (
+                      <div className="flex justify-between">
+                        <span>Address:</span>
+                        <span className="text-gray-900 font-semibold text-right max-w-[60%]">
+                          {customerInfo.deliveryAddress}
+                        </span>
+                      </div>
+                    )}
                   {customerInfo.instructions && (
                     <div className="flex justify-between pt-2 border-t border-gray-200">
                       <span>Instructions:</span>
@@ -288,7 +318,9 @@ export default function CheckoutPage() {
               </div>
 
               <p className="text-gray-500 mb-8">
-                It will be ready soon! We'll contact you when it's ready for pickup.
+                {customerInfo.deliveryType === "delivery"
+                  ? "We'll contact you when your order is out for delivery."
+                  : "It will be ready soon! We'll contact you when it's ready for pickup."}
               </p>
 
               <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-8 text-left">
@@ -396,7 +428,7 @@ export default function CheckoutPage() {
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Room Number *
+                    Room/Unit Number *
                   </label>
                   <input
                     type="text"
@@ -425,6 +457,54 @@ export default function CheckoutPage() {
                     required
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Delivery Type *
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange("deliveryType", "pickup")}
+                      className={`px-4 py-3 rounded-xl border-2 transition-all font-semibold ${
+                        customerInfo.deliveryType === "pickup"
+                          ? "border-orange-500 bg-orange-50 text-orange-700"
+                          : "border-gray-200 bg-gray-50 text-gray-700"
+                      }`}
+                    >
+                      Pickup
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange("deliveryType", "delivery")}
+                      className={`px-4 py-3 rounded-xl border-2 transition-all font-semibold ${
+                        customerInfo.deliveryType === "delivery"
+                          ? "border-orange-500 bg-orange-50 text-orange-700"
+                          : "border-gray-200 bg-gray-50 text-gray-700"
+                      }`}
+                    >
+                      Delivery
+                    </button>
+                  </div>
+                </div>
+
+                {customerInfo.deliveryType === "delivery" && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Delivery Address *
+                    </label>
+                    <input
+                      type="text"
+                      value={customerInfo.deliveryAddress || ""}
+                      onChange={(e) =>
+                        handleInputChange("deliveryAddress", e.target.value)
+                      }
+                      placeholder="e.g., F Block, Room 12"
+                      className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all"
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Order Instructions */}
@@ -566,6 +646,12 @@ export default function CheckoutPage() {
                     <span>Subtotal:</span>
                     <span className="text-gray-900 font-semibold">
                       {formatPrice(subtotal)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-gray-500">
+                    <span>Delivery Fee:</span>
+                    <span className="text-gray-900 font-semibold">
+                      {formatPrice(deliveryFee)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-xl font-bold border-t border-gray-100 pt-3">
